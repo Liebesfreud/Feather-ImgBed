@@ -1,8 +1,8 @@
-# 轻羽图床 FeatherImgBed
+# 轻羽图床 Feather-ImgBed
 
-[![Release](https://img.shields.io/github/v/release/Liebesfreud/FeatherImgBed?display_name=tag&sort=semver)](https://github.com/Liebesfreud/FeatherImgBed/releases)
-[![CI](https://github.com/Liebesfreud/FeatherImgBed/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Liebesfreud/FeatherImgBed/actions/workflows/ci.yml)
-[![GHCR](https://img.shields.io/badge/GHCR-v0.0.1-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/FeatherImgBed/pkgs/container/featherimgbed)
+[![Release](https://img.shields.io/github/v/release/Liebesfreud/Feather-ImgBed?display_name=tag&sort=semver)](https://github.com/Liebesfreud/Feather-ImgBed/releases)
+[![CI](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml)
+[![GHCR](https://img.shields.io/badge/GHCR-v0.0.1-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/Feather-ImgBed/pkgs/container/feather-imgbed)
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -31,12 +31,12 @@
 
 ```bash
 docker run -d \
-  --name featherimgbed \
+  --name feather-imgbed \
   --restart unless-stopped \
   -p 8080:8080 \
   -v feather-data:/data \
   -e FEATHER_SECURE_COOKIE=false \
-  ghcr.io/liebesfreud/featherimgbed:0.0.1
+  ghcr.io/liebesfreud/feather-imgbed:0.0.1
 ```
 
 启动后访问 <http://127.0.0.1:8080>，根据页面提示创建管理员账户并填写站点访问地址。
@@ -54,8 +54,8 @@ curl http://127.0.0.1:8080/healthz
 仓库内的 `compose.yaml` 默认用于本地源码构建：
 
 ```bash
-git clone https://github.com/Liebesfreud/FeatherImgBed.git
-cd FeatherImgBed
+git clone https://github.com/Liebesfreud/Feather-ImgBed.git
+cd Feather-ImgBed
 docker compose up -d --build
 ```
 
@@ -63,9 +63,9 @@ docker compose up -d --build
 
 ```yaml
 services:
-  featherimgbed:
-    image: ghcr.io/liebesfreud/featherimgbed:0.0.1
-    container_name: featherimgbed
+  feather-imgbed:
+    image: ghcr.io/liebesfreud/feather-imgbed:0.0.1
+    container_name: feather-imgbed
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -154,8 +154,8 @@ curl 'https://img.example.com/api/v1/random?format=json'
 需要 Go 1.23+ 和 Node.js 22+：
 
 ```bash
-git clone https://github.com/Liebesfreud/FeatherImgBed.git
-cd FeatherImgBed/frontend
+git clone https://github.com/Liebesfreud/Feather-ImgBed.git
+cd Feather-ImgBed/frontend
 npm ci
 npm run build
 cd ..
@@ -181,14 +181,14 @@ go build ./...
 `v0.0.1` 正式镜像地址：
 
 ```text
-ghcr.io/liebesfreud/featherimgbed:0.0.1
+ghcr.io/liebesfreud/feather-imgbed:0.0.1
 ```
 
 完整的分支保护、镜像标签和 Release 流程见 [分支与发布自动化](docs/automation.md)。
 
 ## 参与贡献
 
-欢迎提交 [Issue](https://github.com/Liebesfreud/FeatherImgBed/issues) 和 Pull Request。提交信息请使用中文，并遵循仓库中的 [AGENTS.md](AGENTS.md) 规范。
+欢迎提交 [Issue](https://github.com/Liebesfreud/Feather-ImgBed/issues) 和 Pull Request。提交信息请使用中文，并遵循仓库中的 [AGENTS.md](AGENTS.md) 规范。
 
 提交代码前请至少运行：
 

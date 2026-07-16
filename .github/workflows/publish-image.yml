@@ -111,7 +111,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
           labels: |
-            org.opencontainers.image.title=FeatherImgBed
+            org.opencontainers.image.title=Feather-ImgBed
             org.opencontainers.image.description=轻羽图床容器镜像
 
       - name: 配置 QEMU
