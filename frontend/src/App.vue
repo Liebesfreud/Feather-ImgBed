@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, HardDrive, ChevronDown, Moon, Sun } from '@lucide/vue'
+import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun } from '@lucide/vue'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
@@ -83,12 +83,11 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
         </RouterLink>
       </nav>
       <div class="topbar-actions">
-        <div class="storage-status"><span><HardDrive :size="16" /></span><div><strong>本地存储</strong><small><i></i>已连接</small></div></div>
-        <UiTooltip :text="isDark ? '切换到浅色模式' : '切换到深色模式'"><button class="theme-button" type="button" :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme">
+        <UiTooltip :text="isDark ? '切换到浅色模式' : '切换到深色模式'"><button class="topbar-control theme-button" type="button" :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme">
           <Sun v-if="isDark" :size="19" /><Moon v-else :size="19" />
         </button></UiTooltip>
         <DropdownMenuRoot v-model:open="menuOpen">
-          <DropdownMenuTrigger as-child><button class="account-button" aria-label="打开账户菜单"><span class="avatar-button"><UserRound :size="18" /></span><span><strong>管理员</strong><small>安全会话</small></span><ChevronDown :size="16" /></button></DropdownMenuTrigger>
+          <DropdownMenuTrigger as-child><button class="topbar-control account-button" aria-label="打开用户菜单" title="用户菜单"><UserRound :size="19" /></button></DropdownMenuTrigger>
           <DropdownMenuPortal><DropdownMenuContent class="account-menu" :side-offset="8" align="end">
             <DropdownMenuItem class="account-menu-item" @select="logout"><LogOut :size="17" />退出登录</DropdownMenuItem>
           </DropdownMenuContent></DropdownMenuPortal>
