@@ -36,6 +36,12 @@ const tabs = [
   { id: 'security', label: '安全与令牌', icon: ShieldCheck }, { id: 'system', label: '系统信息', icon: Info },
 ] as const
 const typeInfo = { local: { label: '本地存储', icon: Server, note: '使用服务器本地磁盘存储文件' }, s3: { label: 'S3 兼容存储', icon: Cloud, note: '适用于 AWS S3、R2、OSS 等对象存储' }, webdav: { label: 'WebDAV', icon: Globe2, note: '通过 WebDAV 协议访问远程服务器' }, telegram: { label: 'Telegram', icon: Send, note: '将图片作为文件发送到频道或群组' } }
+const storageTypeOptions = [
+  { label: '本地存储', value: 'local' },
+  { label: 'S3 兼容存储', value: 's3' },
+  { label: 'WebDAV', value: 'webdav' },
+  { label: 'Telegram', value: 'telegram' },
+]
 const typeFields: Record<string, { key: string; label: string; secret?: boolean; switch?: boolean; placeholder?: string }[]> = {
   local: [{ key: 'data_dir', label: '数据目录', placeholder: 'images' }, { key: 'public_url', label: '外部访问地址', placeholder: 'https://img.example.com/files' }],
   s3: [{ key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com' }, { key: 'region', label: 'Region', placeholder: 'us-east-1' }, { key: 'bucket', label: 'Bucket' }, { key: 'access_key', label: 'Access Key', secret: true }, { key: 'secret_key', label: 'Secret Key', secret: true }, { key: 'public_url', label: '访问域名', placeholder: 'https://cdn.example.com' }, { key: 'path_style', label: '路径风格（Path Style）', switch: true }],
@@ -62,9 +68,18 @@ function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) }
 function setStorageOpen(item: StorageRecord, open: boolean) { if (open) drafts[item.id] = clone(item); expanded.value = open ? item.id : '' }
 function toggleAllowedType(value: string, enabled: boolean) { settings.value.allowed_types = enabled ? [...new Set([...settings.value.allowed_types, value])] : settings.value.allowed_types.filter((item) => item !== value) }
 function addStorage() {
-  const id = `s3-${Date.now().toString(36)}`
-  const item: StorageRecord = { id, name: '新的 S3 存储', type: 's3', enabled: true, config: {} }
+  const id = `storage-${Date.now().toString(36)}`
+  const item: StorageRecord = { id, name: '新的本地存储', type: 'local', enabled: true, config: {} }
   storages.value.push(item); drafts[id] = clone(item); expanded.value = id
+}
+function updateNewStorageType(item: StorageRecord, value: string) {
+  if (item.created_at || !drafts[item.id] || !(value in typeInfo)) return
+  const type = value as StorageRecord['type']
+  item.type = type
+  item.name = `新的${typeInfo[type].label}`
+  drafts[item.id].type = type
+  drafts[item.id].name = item.name
+  drafts[item.id].config = {}
 }
 async function saveSettings() { saving.value = true; try { settings.value = await putJSON<Settings>('/settings', settings.value); toast('基础设置已保存') } catch (e) { toast(e instanceof Error ? e.message : '保存失败', 'error') } finally { saving.value = false } }
 async function saveStorage(id: string) {
@@ -103,7 +118,7 @@ onMounted(async () => {
         <header class="settings-heading"><div><h1>存储管理</h1><p>配置和管理图片存储后端。测试通过后仍需保存才会生效。</p></div><button class="soft-button" @click="addStorage"><Plus :size="18"/>添加存储</button></header>
         <div class="storage-list"><CollapsibleRoot v-for="item in storages" :key="item.id" as="article" class="storage-row" :class="{ expanded: expanded === item.id }" :open="expanded === item.id" @update:open="setStorageOpen(item, $event)">
           <CollapsibleTrigger as-child><button class="storage-summary"><span class="storage-icon"><component :is="typeInfo[item.type].icon" :size="23"/></span><span class="storage-title"><strong>{{ item.name }}</strong><small>{{ typeInfo[item.type].note }}</small></span><span v-if="settings.default_storage_id === item.id" class="default-label">默认</span><span class="status-label" :class="{ on: item.enabled }">{{ item.enabled ? '已启用' : '未启用' }}</span><ChevronDown :size="19"/></button></CollapsibleTrigger>
-          <CollapsibleContent v-if="drafts[item.id]" class="storage-form"><div class="form-grid"><label>存储名称<input v-model="drafts[item.id].name"></label><label class="switch-row compact"><span><strong>启用此存储</strong></span><UiSwitch v-model="drafts[item.id].enabled" :aria-label="`启用${item.name}`" /></label><template v-for="field in typeFields[item.type]" :key="field.key"><label v-if="!field.switch">{{ field.label }}<span class="password-field"><input v-model="drafts[item.id].config[field.key] as string" :type="field.secret && !passwordVisible ? 'password' : 'text'" :placeholder="field.secret && item.config[`${field.key}_configured`] ? '留空表示保持原值' : field.placeholder"><UiTooltip v-if="field.secret" :text="passwordVisible ? '隐藏密钥' : '显示密钥'" side="left"><button type="button" :aria-label="passwordVisible ? '隐藏密钥' : '显示密钥'" @click="passwordVisible = !passwordVisible"><EyeOff v-if="passwordVisible" :size="17"/><Eye v-else :size="17"/></button></UiTooltip></span></label><label v-else class="switch-row compact"><span><strong>{{ field.label }}</strong></span><UiSwitch :model-value="Boolean(drafts[item.id].config[field.key])" :aria-label="field.label" @update:model-value="drafts[item.id].config[field.key] = $event" /></label></template></div><div class="storage-actions"><button v-if="item.id !== settings.default_storage_id" class="text-button danger" @click="requestDanger({ kind: 'storage', item })"><Trash2 :size="17"/>删除</button><span></span><button class="soft-button" :disabled="testing === item.id" @click="testStorage(item.id)"><Wifi :size="17"/>{{ testing === item.id ? '测试中…' : '测试连接' }}</button><button class="primary-button" :disabled="saving" @click="saveStorage(item.id)"><Save :size="17"/>保存配置</button></div></CollapsibleContent>
+          <CollapsibleContent v-if="drafts[item.id]" class="storage-form"><div class="form-grid"><label v-if="!item.created_at">存储类型<UiSelect :model-value="drafts[item.id].type" :options="storageTypeOptions" aria-label="存储类型" @update:model-value="updateNewStorageType(item, $event)" /></label><label>存储名称<input v-model="drafts[item.id].name"></label><label class="switch-row compact"><span><strong>启用此存储</strong></span><UiSwitch v-model="drafts[item.id].enabled" :aria-label="`启用${item.name}`" /></label><template v-for="field in typeFields[drafts[item.id].type]" :key="field.key"><label v-if="!field.switch">{{ field.label }}<span class="password-field"><input v-model="drafts[item.id].config[field.key] as string" :type="field.secret && !passwordVisible ? 'password' : 'text'" :placeholder="field.secret && item.config[`${field.key}_configured`] ? '留空表示保持原值' : field.placeholder"><UiTooltip v-if="field.secret" :text="passwordVisible ? '隐藏密钥' : '显示密钥'" side="left"><button type="button" :aria-label="passwordVisible ? '隐藏密钥' : '显示密钥'" @click="passwordVisible = !passwordVisible"><EyeOff v-if="passwordVisible" :size="17"/><Eye v-else :size="17"/></button></UiTooltip></span></label><label v-else class="switch-row compact"><span><strong>{{ field.label }}</strong></span><UiSwitch :model-value="Boolean(drafts[item.id].config[field.key])" :aria-label="field.label" @update:model-value="drafts[item.id].config[field.key] = $event" /></label></template></div><div class="storage-actions"><button v-if="item.id !== settings.default_storage_id" class="text-button danger" @click="requestDanger({ kind: 'storage', item })"><Trash2 :size="17"/>删除</button><span></span><button class="soft-button" :disabled="testing === item.id" @click="testStorage(item.id)"><Wifi :size="17"/>{{ testing === item.id ? '测试中…' : '测试连接' }}</button><button class="primary-button" :disabled="saving" @click="saveStorage(item.id)"><Save :size="17"/>保存配置</button></div></CollapsibleContent>
         </CollapsibleRoot></div>
       </TabsContent>
 
