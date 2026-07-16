@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"featherimgbed/internal/app"
+	"feather-imgbed/internal/app"
 )
 
 var version = "dev"

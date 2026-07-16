@@ -1,4 +1,4 @@
-module featherimgbed
+module feather-imgbed
 
 go 1.23.0
 
