@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Feather, Eye, EyeOff, ArrowRight, ShieldCheck } from 'lucide-vue-next'
+import { Feather, Eye, EyeOff, ArrowRight, ShieldCheck } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 import { ApiError } from '../api'
 import UiTooltip from './ui/UiTooltip.vue'

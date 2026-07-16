@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { CloudUpload, ImagePlus, Clipboard, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database } from 'lucide-vue-next'
+import { CloudUpload, ImagePlus, Clipboard, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database } from '@lucide/vue'
 import { api } from '../api'
 import { toast } from '../toast'
 import type { ImageItem, Settings, StorageRecord } from '../types'

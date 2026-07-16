@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Search, Database, CalendarDays, ArrowDownUp, CheckSquare, MoreHorizontal, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw } from 'lucide-vue-next'
+import { Search, Database, CalendarDays, ArrowDownUp, CheckSquare, MoreHorizontal, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { api, deleteJSON } from '../api'

@@ -1,11 +1,11 @@
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -16,7 +16,7 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/feather-imgbed .
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata && addgroup -S feather && adduser -S -G feather feather
 WORKDIR /app
 COPY --from=builder /out/feather-imgbed /usr/local/bin/feather-imgbed
