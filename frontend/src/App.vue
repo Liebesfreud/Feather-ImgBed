@@ -5,6 +5,7 @@ import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, HardDrive, C
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
+import Dither from './components/backgrounds/Dither.vue'
 import ToastHost from './components/ToastHost.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
 
@@ -30,6 +31,7 @@ const nav = [
 ]
 const showApp = computed(() => !auth.checking && auth.initialized && auth.authenticated)
 const isDark = computed(() => theme.value === 'dark')
+const ditherColor: [number, number, number] = [0.11, 0.68, 0.3]
 
 function toggleTheme() {
   theme.value = isDark.value ? 'light' : 'dark'
@@ -58,6 +60,7 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
 
 <template>
   <TooltipProvider :delay-duration="350">
+  <Dither class="global-dither" aria-hidden="true" :wave-color="ditherColor" :wave-speed="0.015" :wave-frequency="2.4" :wave-amplitude="0.22" :color-num="3" :pixel-size="3" :enable-mouse-interaction="false" />
   <div v-if="auth.checking" class="app-loader" aria-label="正在加载">
     <Feather :size="38" /><span>正在展开轻羽…</span>
   </div>
