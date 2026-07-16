@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, HardDrive, ChevronDown, Moon, Sun } from 'lucide-vue-next'
+import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, HardDrive, ChevronDown, Moon, Sun } from '@lucide/vue'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from 'lucide-vue-next'
+import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from '@lucide/vue'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
