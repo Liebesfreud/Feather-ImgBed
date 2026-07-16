@@ -1,0 +1,14 @@
+services:
+  featherimgbed:
+    build: .
+    container_name: featherimgbed
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - feather-data:/data
+    environment:
+      FEATHER_SECURE_COOKIE: "false" # 未配置 HTTPS 的本地试用；生产环境应改为 true
+
+volumes:
+  feather-data:

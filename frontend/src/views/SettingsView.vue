@@ -1,0 +1,124 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from 'lucide-vue-next'
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { api, deleteJSON, postJSON, putJSON } from '../api'
+import { toast } from '../toast'
+import { useAuthStore } from '../stores/auth'
+import type { ApiToken, Settings, StorageRecord } from '../types'
+import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
+import UiCheckbox from '../components/ui/UiCheckbox.vue'
+import UiSelect from '../components/ui/UiSelect.vue'
+import UiSwitch from '../components/ui/UiSwitch.vue'
+import UiTooltip from '../components/ui/UiTooltip.vue'
+
+const auth = useAuthStore()
+const tab = ref<'base' | 'storage' | 'security' | 'system'>('base')
+const loading = ref(true)
+const saving = ref(false)
+const testing = ref('')
+const expanded = ref('')
+const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false })
+const storages = ref<StorageRecord[]>([])
+const tokens = ref<ApiToken[]>([])
+const system = ref({ version: '-', database: '-', enabled_storages: 0 })
+const tokenName = ref('')
+const newToken = ref('')
+const password = reactive({ current_password: '', new_password: '', confirm: '' })
+const passwordVisible = ref(false)
+const drafts = reactive<Record<string, StorageRecord>>({})
+const dangerOpen = ref(false)
+const dangerBusy = ref(false)
+const dangerTarget = ref<{ kind: 'storage'; item: StorageRecord } | { kind: 'token'; item: ApiToken } | null>(null)
+
+const tabs = [
+  { id: 'base', label: '基础设置', icon: SlidersHorizontal }, { id: 'storage', label: '存储管理', icon: Database },
+  { id: 'security', label: '安全与令牌', icon: ShieldCheck }, { id: 'system', label: '系统信息', icon: Info },
+] as const
+const typeInfo = { local: { label: '本地存储', icon: Server, note: '使用服务器本地磁盘存储文件' }, s3: { label: 'S3 兼容存储', icon: Cloud, note: '适用于 AWS S3、R2、OSS 等对象存储' }, webdav: { label: 'WebDAV', icon: Globe2, note: '通过 WebDAV 协议访问远程服务器' }, telegram: { label: 'Telegram', icon: Send, note: '将图片作为文件发送到频道或群组' } }
+const typeFields: Record<string, { key: string; label: string; secret?: boolean; switch?: boolean; placeholder?: string }[]> = {
+  local: [{ key: 'data_dir', label: '数据目录', placeholder: 'images' }, { key: 'public_url', label: '外部访问地址', placeholder: 'https://img.example.com/files' }],
+  s3: [{ key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com' }, { key: 'region', label: 'Region', placeholder: 'us-east-1' }, { key: 'bucket', label: 'Bucket' }, { key: 'access_key', label: 'Access Key', secret: true }, { key: 'secret_key', label: 'Secret Key', secret: true }, { key: 'public_url', label: '访问域名', placeholder: 'https://cdn.example.com' }, { key: 'path_style', label: '路径风格（Path Style）', switch: true }],
+  webdav: [{ key: 'url', label: '服务地址' }, { key: 'username', label: '用户名' }, { key: 'password', label: '密码', secret: true }, { key: 'target_dir', label: '目标目录' }, { key: 'public_url', label: '访问域名' }],
+  telegram: [{ key: 'bot_token', label: 'Bot Token', secret: true }, { key: 'chat_id', label: '频道或群组 ID' }, { key: 'public_url', label: '公开代理地址' }],
+}
+const enabledStorages = computed(() => storages.value.filter((item) => item.enabled))
+const enabledStorageOptions = computed(() => enabledStorages.value.map((item) => ({ label: item.name, value: item.id })))
+const namingRuleOptions = [
+  { label: '随机 ID', value: 'random' },
+  { label: '日期路径', value: 'date' },
+  { label: '保留原文件名', value: 'original' },
+]
+const allowedFormats = [{ value: 'image/jpeg', label: 'JPEG' }, { value: 'image/png', label: 'PNG' }, { value: 'image/gif', label: 'GIF' }, { value: 'image/webp', label: 'WebP' }]
+const dangerTitle = computed(() => dangerTarget.value?.kind === 'storage' ? '删除这个存储？' : '撤销这个 Token？')
+const dangerDescription = computed(() => {
+  if (!dangerTarget.value) return ''
+  return dangerTarget.value.kind === 'storage'
+    ? `“${dangerTarget.value.item.name}”的存储配置将被删除。`
+    : `Token“${dangerTarget.value.item.name}”将立即失效，使用它的客户端无法再上传。`
+})
+
+function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) }
+function setStorageOpen(item: StorageRecord, open: boolean) { if (open) drafts[item.id] = clone(item); expanded.value = open ? item.id : '' }
+function toggleAllowedType(value: string, enabled: boolean) { settings.value.allowed_types = enabled ? [...new Set([...settings.value.allowed_types, value])] : settings.value.allowed_types.filter((item) => item !== value) }
+function addStorage() {
+  const id = `s3-${Date.now().toString(36)}`
+  const item: StorageRecord = { id, name: '新的 S3 存储', type: 's3', enabled: true, config: {} }
+  storages.value.push(item); drafts[id] = clone(item); expanded.value = id
+}
+async function saveSettings() { saving.value = true; try { settings.value = await putJSON<Settings>('/settings', settings.value); toast('基础设置已保存') } catch (e) { toast(e instanceof Error ? e.message : '保存失败', 'error') } finally { saving.value = false } }
+async function saveStorage(id: string) {
+  saving.value = true
+  try { const saved = await putJSON<StorageRecord>(`/storages/${id}`, drafts[id]); const index = storages.value.findIndex((item) => item.id === id); storages.value[index] = saved; drafts[id] = clone(saved); toast('存储配置已保存') }
+  catch (e) { toast(e instanceof Error ? e.message : '保存失败', 'error') }
+  finally { saving.value = false }
+}
+async function testStorage(id: string) { testing.value = id; try { await postJSON(`/storages/test?storage_id=${encodeURIComponent(id)}`, drafts[id]); toast('连接成功，配置尚未保存') } catch (e) { toast(e instanceof Error ? e.message : '连接失败', 'error') } finally { testing.value = '' } }
+async function deleteStorage(item: StorageRecord) { try { await deleteJSON(`/storages/${item.id}`); storages.value = storages.value.filter((value) => value.id !== item.id); toast('存储已删除') } catch (e) { toast(e instanceof Error ? e.message : '删除失败', 'error') } }
+async function createToken() { if (!tokenName.value.trim()) return; try { const result = await postJSON<{ token: string }>('/tokens', { name: tokenName.value }); newToken.value = result.token; tokenName.value = ''; tokens.value = await api<ApiToken[]>('/tokens'); toast('Token 已创建，请立即复制保存') } catch (e) { toast(e instanceof Error ? e.message : '创建失败', 'error') } }
+async function revokeToken(item: ApiToken) { try { await deleteJSON(`/tokens/${item.id}`); tokens.value = tokens.value.filter((token) => token.id !== item.id); toast('Token 已撤销') } catch (e) { toast(e instanceof Error ? e.message : '撤销失败', 'error') } }
+function requestDanger(target: NonNullable<typeof dangerTarget.value>) { dangerTarget.value = target; dangerOpen.value = true }
+async function confirmDanger() { const target = dangerTarget.value; if (!target) return; dangerBusy.value = true; try { if (target.kind === 'storage') await deleteStorage(target.item); else await revokeToken(target.item) } finally { dangerBusy.value = false; dangerOpen.value = false; dangerTarget.value = null } }
+async function copyToken() { await navigator.clipboard.writeText(newToken.value); toast('Token 已复制') }
+async function changePassword() { if (password.new_password !== password.confirm) { toast('两次输入的新密码不一致', 'error'); return } try { await putJSON('/auth/password', { current_password: password.current_password, new_password: password.new_password }); toast('密码已修改，请重新登录'); auth.reset() } catch (e) { toast(e instanceof Error ? e.message : '修改失败', 'error') } }
+function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '从未使用' }
+
+onMounted(async () => {
+  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = result[0]; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
+})
+</script>
+
+<template>
+  <TabsRoot v-model="tab" class="settings-layout" orientation="vertical">
+    <TabsList class="settings-nav" aria-label="系统设置分类"><h2>系统设置</h2><TabsTrigger v-for="item in tabs" :key="item.id" :value="item.id" :class="{ active: tab === item.id }"><component :is="item.icon" :size="20"/>{{ item.label }}</TabsTrigger><div class="feather-decor">⌁</div></TabsList>
+    <div v-if="loading" class="settings-main gallery-state"><LoaderCircle class="spin" :size="28"/>正在读取设置…</div>
+    <template v-else>
+      <TabsContent value="base" class="settings-main">
+        <header class="settings-heading"><div><h1>基础设置</h1><p>调整站点信息、上传限制与文件命名方式。</p></div><button class="primary-button" :disabled="saving" @click="saveSettings"><Save :size="18"/>保存设置</button></header>
+        <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
+        <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong><small>关闭时将按 SHA-256 自动去重</small></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
+      </TabsContent>
+
+      <TabsContent value="storage" class="settings-main">
+        <header class="settings-heading"><div><h1>存储管理</h1><p>配置和管理图片存储后端。测试通过后仍需保存才会生效。</p></div><button class="soft-button" @click="addStorage"><Plus :size="18"/>添加存储</button></header>
+        <div class="storage-list"><CollapsibleRoot v-for="item in storages" :key="item.id" as="article" class="storage-row" :class="{ expanded: expanded === item.id }" :open="expanded === item.id" @update:open="setStorageOpen(item, $event)">
+          <CollapsibleTrigger as-child><button class="storage-summary"><span class="storage-icon"><component :is="typeInfo[item.type].icon" :size="23"/></span><span class="storage-title"><strong>{{ item.name }}</strong><small>{{ typeInfo[item.type].note }}</small></span><span v-if="settings.default_storage_id === item.id" class="default-label">默认</span><span class="status-label" :class="{ on: item.enabled }">{{ item.enabled ? '已启用' : '未启用' }}</span><ChevronDown :size="19"/></button></CollapsibleTrigger>
+          <CollapsibleContent v-if="drafts[item.id]" class="storage-form"><div class="form-grid"><label>存储名称<input v-model="drafts[item.id].name"></label><label class="switch-row compact"><span><strong>启用此存储</strong></span><UiSwitch v-model="drafts[item.id].enabled" :aria-label="`启用${item.name}`" /></label><template v-for="field in typeFields[item.type]" :key="field.key"><label v-if="!field.switch">{{ field.label }}<span class="password-field"><input v-model="drafts[item.id].config[field.key] as string" :type="field.secret && !passwordVisible ? 'password' : 'text'" :placeholder="field.secret && item.config[`${field.key}_configured`] ? '留空表示保持原值' : field.placeholder"><UiTooltip v-if="field.secret" :text="passwordVisible ? '隐藏密钥' : '显示密钥'" side="left"><button type="button" :aria-label="passwordVisible ? '隐藏密钥' : '显示密钥'" @click="passwordVisible = !passwordVisible"><EyeOff v-if="passwordVisible" :size="17"/><Eye v-else :size="17"/></button></UiTooltip></span></label><label v-else class="switch-row compact"><span><strong>{{ field.label }}</strong></span><UiSwitch :model-value="Boolean(drafts[item.id].config[field.key])" :aria-label="field.label" @update:model-value="drafts[item.id].config[field.key] = $event" /></label></template></div><div class="storage-actions"><button v-if="item.id !== settings.default_storage_id" class="text-button danger" @click="requestDanger({ kind: 'storage', item })"><Trash2 :size="17"/>删除</button><span></span><button class="soft-button" :disabled="testing === item.id" @click="testStorage(item.id)"><Wifi :size="17"/>{{ testing === item.id ? '测试中…' : '测试连接' }}</button><button class="primary-button" :disabled="saving" @click="saveStorage(item.id)"><Save :size="17"/>保存配置</button></div></CollapsibleContent>
+        </CollapsibleRoot></div>
+      </TabsContent>
+
+      <TabsContent value="security" class="settings-main">
+        <header class="settings-heading"><div><h1>安全与令牌</h1><p>修改管理员密码，并管理第三方上传工具使用的 API Token。</p></div></header>
+        <section class="form-section"><h2>修改密码</h2><form class="form-grid" @submit.prevent="changePassword"><label>当前密码<input v-model="password.current_password" type="password" required></label><label>新密码<input v-model="password.new_password" type="password" minlength="10" required></label><label>确认新密码<input v-model="password.confirm" type="password" minlength="10" required></label><button class="soft-button form-button"><Save :size="17"/>更新密码</button></form></section>
+        <section class="form-section"><h2>API Token</h2><p class="section-note">Token 原文仅在创建时展示一次，请妥善保存。</p><div class="token-create"><input v-model="tokenName" placeholder="Token 用途名称，例如 PicGo"><button class="primary-button" @click="createToken"><Plus :size="17"/>创建 Token</button></div><div v-if="newToken" class="new-token"><KeyRound :size="19"/><code>{{ newToken }}</code><button @click="copyToken"><Copy :size="17"/>复制</button></div><div class="token-list"><article v-for="item in tokens" :key="item.id"><span class="storage-icon"><KeyRound :size="19"/></span><div><strong>{{ item.name }}</strong><small>创建于 {{ formatDate(item.created_at) }} · {{ item.last_used_at ? `最近使用 ${formatDate(item.last_used_at)}` : '从未使用' }}</small></div><button class="text-button danger" @click="requestDanger({ kind: 'token', item })">撤销</button></article><p v-if="!tokens.length" class="section-note">还没有 API Token。</p></div></section>
+      </TabsContent>
+
+      <TabsContent value="system" class="settings-main">
+        <header class="settings-heading"><div><h1>系统信息</h1><p>查看当前服务状态与版本信息。</p></div></header>
+        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.0.1</dd></div></dl></section>
+        <section class="form-section danger-zone"><h2>会话</h2><p>退出当前浏览器上的管理员会话。</p><button class="soft-button danger" @click="auth.logout"><LogOut :size="17"/>退出登录</button></section>
+      </TabsContent>
+    </template>
+  </TabsRoot>
+  <ConfirmDialog v-model:open="dangerOpen" :title="dangerTitle" :description="dangerDescription" :confirm-label="dangerTarget?.kind === 'storage' ? '删除存储' : '撤销 Token'" :busy="dangerBusy" @confirm="confirmDanger" />
+</template>
