@@ -43,9 +43,21 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: 运行前端单元测试
+        working-directory: frontend
+        run: npm test
+
       - name: 构建前端
         working-directory: frontend
         run: npm run build
+
+      - name: 安装 Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: 运行前端核心流程测试
+        working-directory: frontend
+        run: npm run test:e2e
 
       - name: 检查 Go 格式
         run: test -z "$(gofmt -l $(find . -type f -name '*.go'))"
