@@ -76,6 +76,20 @@ func validateSettings(settings Settings) string {
 	if settings.NamingRule != "random" && settings.NamingRule != "date" && settings.NamingRule != "original" {
 		return "图片命名规则必须是 random、date 或 original"
 	}
+	if settings.Processing.WebPQuality < 1 || settings.Processing.WebPQuality > 100 {
+		return "WebP 质量必须在 1 到 100 之间"
+	}
+	if len([]rune(settings.Processing.WatermarkText)) > 200 {
+		return "水印文字最多 200 个字符"
+	}
+	if settings.Processing.WatermarkEnabled && strings.TrimSpace(settings.Processing.WatermarkText) == "" {
+		return "启用水印时必须填写水印文字"
+	}
+	switch settings.Processing.WatermarkPosition {
+	case "top-left", "top-right", "bottom-left", "bottom-right", "center":
+	default:
+		return "水印位置必须是 top-left、top-right、bottom-left、bottom-right 或 center"
+	}
 	return ""
 }
 
@@ -86,6 +100,7 @@ func (a *App) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	settings.SiteName = strings.TrimSpace(settings.SiteName)
 	settings.SiteURL = strings.TrimRight(strings.TrimSpace(settings.SiteURL), "/")
+	settings.Processing.WatermarkText = strings.TrimSpace(settings.Processing.WatermarkText)
 	if message := validateSettings(settings); message != "" {
 		writeError(w, r, 400, "INVALID_SETTINGS", message)
 		return

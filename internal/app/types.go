@@ -3,23 +3,24 @@ package app
 import "time"
 
 type Image struct {
-	ID           string `json:"id"`
-	Hash         string `json:"hash,omitempty"`
-	OriginalName string `json:"original_name"`
-	ObjectKey    string `json:"-"`
-	StorageType  string `json:"storage_type"`
-	StorageID    string `json:"storage_id"`
-	MIMEType     string `json:"mime_type"`
-	Size         int64  `json:"size"`
-	Width        int    `json:"width,omitempty"`
-	Height       int    `json:"height,omitempty"`
-	PublicURL    string `json:"url"`
-	ThumbnailURL string `json:"thumbnail_url,omitempty"`
-	DeleteError  string `json:"delete_error,omitempty"`
-	DeletedAt    string `json:"deleted_at,omitempty"`
-	PurgeError   string `json:"purge_error,omitempty"`
-	Favorite     bool   `json:"favorite"`
-	CreatedAt    string `json:"created_at"`
+	ID           string         `json:"id"`
+	Hash         string         `json:"hash,omitempty"`
+	OriginalName string         `json:"original_name"`
+	ObjectKey    string         `json:"-"`
+	StorageType  string         `json:"storage_type"`
+	StorageID    string         `json:"storage_id"`
+	MIMEType     string         `json:"mime_type"`
+	Size         int64          `json:"size"`
+	Width        int            `json:"width,omitempty"`
+	Height       int            `json:"height,omitempty"`
+	PublicURL    string         `json:"url"`
+	ThumbnailURL string         `json:"thumbnail_url,omitempty"`
+	DeleteError  string         `json:"delete_error,omitempty"`
+	DeletedAt    string         `json:"deleted_at,omitempty"`
+	PurgeError   string         `json:"purge_error,omitempty"`
+	Favorite     bool           `json:"favorite"`
+	CreatedAt    string         `json:"created_at"`
+	Variants     []ImageVariant `json:"variants,omitempty"`
 }
 
 type ImageVariant struct {
@@ -46,14 +47,23 @@ type StorageRecord struct {
 }
 
 type Settings struct {
-	SiteName         string   `json:"site_name"`
-	SiteURL          string   `json:"site_url"`
-	DefaultStorageID string   `json:"default_storage_id"`
-	MaxFileSize      int64    `json:"max_file_size"`
-	MaxBatchCount    int      `json:"max_batch_count"`
-	AllowedTypes     []string `json:"allowed_types"`
-	NamingRule       string   `json:"naming_rule"`
-	AllowDuplicates  bool     `json:"allow_duplicates"`
+	SiteName         string             `json:"site_name"`
+	SiteURL          string             `json:"site_url"`
+	DefaultStorageID string             `json:"default_storage_id"`
+	MaxFileSize      int64              `json:"max_file_size"`
+	MaxBatchCount    int                `json:"max_batch_count"`
+	AllowedTypes     []string           `json:"allowed_types"`
+	NamingRule       string             `json:"naming_rule"`
+	AllowDuplicates  bool               `json:"allow_duplicates"`
+	Processing       ProcessingSettings `json:"processing"`
+}
+
+type ProcessingSettings struct {
+	GenerateWebP      bool   `json:"generate_webp"`
+	WebPQuality       int    `json:"webp_quality"`
+	WatermarkEnabled  bool   `json:"watermark_enabled"`
+	WatermarkText     string `json:"watermark_text"`
+	WatermarkPosition string `json:"watermark_position"`
 }
 
 func defaultSettings() Settings {
@@ -64,6 +74,9 @@ func defaultSettings() Settings {
 		AllowedTypes:    []string{"image/jpeg", "image/png", "image/gif", "image/webp"},
 		NamingRule:      "random",
 		AllowDuplicates: false,
+		Processing: ProcessingSettings{
+			WebPQuality: 82, WatermarkPosition: "bottom-right",
+		},
 	}
 }
 

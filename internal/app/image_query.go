@@ -58,6 +58,11 @@ func (a *App) getImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取图片失败")
 		return
 	}
+	img.Variants, err = listImageVariants(r.Context(), a.db, img.ID)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取图片派生版本失败")
+		return
+	}
 	writeData(w, r, http.StatusOK, img)
 }
 

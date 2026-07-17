@@ -193,24 +193,29 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 		Width: config.Width, Height: config.Height, PublicURL: publicURL(record, storedKey), CreatedAt: nowUTC(),
 	}
 
-	var variant *ImageVariant
+	variants := make([]*ImageVariant, 0, 3)
 	if generated, generateErr := generateThumbnail(temp, mime, id); generateErr != nil {
 		a.logger.Warn("缩略图生成失败，保留原图", "request_id", requestID, "image_id", id, "error", generateErr)
 	} else {
-		thumbCtx, thumbCancel := context.WithTimeout(ctx, 45*time.Second)
-		var thumbKey string
-		thumbKey, err = backend.Put(thumbCtx, generated.ObjectKey, generated.Reader, generated.Size, generated.MIMEType)
-		thumbCancel()
-		if err != nil {
-			a.logger.Warn("缩略图写入失败，保留原图", "request_id", requestID, "image_id", id, "error", err)
+		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, id, "thumbnail", img.CreatedAt, generated)
+		if storeErr != nil {
+			a.logger.Warn("缩略图写入失败，保留原图", "request_id", requestID, "image_id", id, "error", storeErr)
 		} else {
-			variant = &ImageVariant{
-				ID: newUUIDv7(), ImageID: id, Kind: "thumbnail", ObjectKey: thumbKey,
-				PublicURL: publicURL(record, thumbKey), MIMEType: generated.MIMEType,
-				Size: generated.Size, Width: generated.Width, Height: generated.Height, CreatedAt: img.CreatedAt,
-			}
+			variants = append(variants, variant)
 			img.ThumbnailURL = variant.PublicURL
 		}
+	}
+	generatedVariants, processingFailures := generateProcessingVariants(temp, mime, id, settings.Processing)
+	for _, processingErr := range processingFailures {
+		a.logger.Warn("图片派生处理失败，保留原图", "request_id", requestID, "image_id", id, "error", processingErr)
+	}
+	for _, generated := range generatedVariants {
+		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, id, generated.Kind, img.CreatedAt, generated.Image)
+		if storeErr != nil {
+			a.logger.Warn("图片派生版本写入失败，保留原图", "request_id", requestID, "image_id", id, "kind", generated.Kind, "error", storeErr)
+			continue
+		}
+		variants = append(variants, variant)
 	}
 
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -221,12 +226,17 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 			img.ID, img.Hash, img.OriginalName, img.ObjectKey, img.StorageType, img.StorageID,
 			img.MIMEType, img.Size, img.Width, img.Height, img.PublicURL, img.CreatedAt)
 	}
-	if err == nil && variant != nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO image_variants(
-			id,image_id,kind,object_key,public_url,mime_type,size,width,height,created_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			variant.ID, variant.ImageID, variant.Kind, variant.ObjectKey, variant.PublicURL,
-			variant.MIMEType, variant.Size, variant.Width, variant.Height, variant.CreatedAt)
+	if err == nil {
+		for _, variant := range variants {
+			_, err = tx.ExecContext(ctx, `INSERT INTO image_variants(
+				id,image_id,kind,object_key,public_url,mime_type,size,width,height,created_at
+			) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+				variant.ID, variant.ImageID, variant.Kind, variant.ObjectKey, variant.PublicURL,
+				variant.MIMEType, variant.Size, variant.Width, variant.Height, variant.CreatedAt)
+			if err != nil {
+				break
+			}
+		}
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -234,17 +244,37 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 		_ = tx.Rollback()
 	}
 	if err != nil {
-		a.rollbackStoredObjects(backend, requestID, record.ID, storedKey, variant)
+		a.rollbackStoredObjects(backend, requestID, record.ID, storedKey, variants)
 		return Image{}, &apiError{Code: "DATABASE_ERROR", Message: "图片信息保存失败，已尝试回滚上传"}
 	}
 	return img, nil
 }
 
-func (a *App) rollbackStoredObjects(backend storageBackend, requestID, storageID, originalKey string, variant *ImageVariant) {
+func (a *App) storeGeneratedVariant(
+	ctx context.Context,
+	backend storageBackend,
+	record StorageRecord,
+	imageID, kind, createdAt string,
+	generated generatedImage,
+) (*ImageVariant, error) {
+	putCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	storedKey, err := backend.Put(putCtx, generated.ObjectKey, generated.Reader, generated.Size, generated.MIMEType)
+	if err != nil {
+		return nil, err
+	}
+	return &ImageVariant{
+		ID: newUUIDv7(), ImageID: imageID, Kind: kind, ObjectKey: storedKey,
+		PublicURL: publicURL(record, storedKey), MIMEType: generated.MIMEType,
+		Size: generated.Size, Width: generated.Width, Height: generated.Height, CreatedAt: createdAt,
+	}, nil
+}
+
+func (a *App) rollbackStoredObjects(backend storageBackend, requestID, storageID, originalKey string, variants []*ImageVariant) {
 	rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	keys := []string{originalKey}
-	if variant != nil {
+	for _, variant := range variants {
 		keys = append([]string{variant.ObjectKey}, keys...)
 	}
 	for _, key := range keys {
