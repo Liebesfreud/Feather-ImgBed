@@ -280,3 +280,25 @@ func TestPurgeReturnsPerItemResultsAndKeepsFailures(t *testing.T) {
 		t.Fatalf("清空后仍有记录: count=%d err=%v", count, err)
 	}
 }
+
+func TestPurgeRecordsBackendCreationFailure(t *testing.T) {
+	a := newTestApp(t)
+	initializeTestApp(t, a.Handler())
+	deletedAt := nowUTC()
+	insertImageForTest(t, a, "failed", deletedAt, deletedAt)
+	a.backendFactory = func(StorageRecord) (storageBackend, error) {
+		return nil, errors.New("simulated backend failure")
+	}
+
+	err := a.permanentlyDeleteImage(context.Background(), "failed")
+	if err == nil {
+		t.Fatal("创建存储后端失败时永久删除不应成功")
+	}
+	var purgeError string
+	if err := a.db.QueryRow(`SELECT COALESCE(purge_error,'') FROM images WHERE id='failed'`).Scan(&purgeError); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(purgeError, "simulated backend failure") {
+		t.Fatalf("存储后端失败未写入 purge_error: %q", purgeError)
+	}
+}

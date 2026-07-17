@@ -261,14 +261,17 @@ func (a *App) permanentlyDeleteImage(ctx context.Context, id string) error {
 	}
 	variants, err := listImageVariants(ctx, a.db, id)
 	if err != nil {
+		a.recordPurgeError(id, err)
 		return err
 	}
 	record, err := a.storageRecord(ctx, img.StorageID)
 	if err != nil {
+		a.recordPurgeError(id, err)
 		return err
 	}
 	backend, err := a.backend(record)
 	if err != nil {
+		a.recordPurgeError(id, err)
 		return err
 	}
 	deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
