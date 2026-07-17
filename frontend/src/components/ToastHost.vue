@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, CircleAlert, Info } from 'lucide-vue-next'
+import { CheckCircle2, CircleAlert, Info } from '@lucide/vue'
 import { ToastDescription, ToastProvider, ToastRoot, ToastViewport } from 'reka-ui'
 import { dismissToast, toasts } from '../toast'
 </script>

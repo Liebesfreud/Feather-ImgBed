@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -228,6 +229,42 @@ func TestPublicFilesDoNotExposeDirectoryListing(t *testing.T) {
 	}
 }
 
+func TestLocalOriginalAndVariantFilesRespectTrash(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+
+	body, contentType := uploadBody(t, pngBytes(t))
+	recorder, response := request(t, handler, http.MethodPost, "/api/v1/images", body, cookie, csrf, "", contentType)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("上传失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var uploaded Image
+	if err := json.Unmarshal(response.Data, &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if uploaded.ThumbnailURL == "" {
+		t.Fatal("上传后未生成缩略图")
+	}
+	for _, target := range []string{uploaded.PublicURL, uploaded.ThumbnailURL} {
+		recorder, _ = request(t, handler, http.MethodGet, target, nil, nil, "", "", "")
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("本地图片 %s 无法访问: %d", target, recorder.Code)
+		}
+	}
+
+	recorder, _ = request(t, handler, http.MethodDelete, "/api/v1/images/"+uploaded.ID, nil, cookie, csrf, "", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("移入回收站失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	for _, target := range []string{uploaded.PublicURL, uploaded.ThumbnailURL} {
+		recorder, _ = request(t, handler, http.MethodGet, target, nil, nil, "", "", "")
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("回收站图片 %s 仍可访问: %d", target, recorder.Code)
+		}
+	}
+}
+
 func TestRandomImageAPI(t *testing.T) {
 	a := newTestApp(t)
 	handler := a.Handler()
@@ -349,6 +386,9 @@ func (s *rollbackStorage) Put(context.Context, string, io.Reader, int64, string)
 func (s *rollbackStorage) Delete(ctx context.Context, _ string) error {
 	s.deleteContextError = ctx.Err()
 	return nil
+}
+func (s *rollbackStorage) Open(context.Context, string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
 }
 func (s *rollbackStorage) Test(context.Context) error { return nil }
 

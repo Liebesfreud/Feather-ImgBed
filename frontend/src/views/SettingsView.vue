@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from 'lucide-vue-next'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from '@lucide/vue'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import { useAuthStore } from '../stores/auth'
 import type { ApiToken, Settings, StorageRecord } from '../types'
+import {
+  linkFormatOptions,
+  linkSeparatorOptions,
+  readCopyPreferences,
+  writeCopyPreferences,
+  type LinkFormat,
+  type LinkSeparator,
+} from '../linkFormats'
+import { defaultProcessingSettings, normalizeProcessingSettings } from '../processingSettings'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
@@ -18,7 +27,7 @@ const loading = ref(true)
 const saving = ref(false)
 const testing = ref('')
 const expanded = ref('')
-const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false })
+const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false, processing: { ...defaultProcessingSettings } })
 const storages = ref<StorageRecord[]>([])
 const tokens = ref<ApiToken[]>([])
 const system = ref({ version: '-', database: '-', enabled_storages: 0 })
@@ -30,12 +39,22 @@ const drafts = reactive<Record<string, StorageRecord>>({})
 const dangerOpen = ref(false)
 const dangerBusy = ref(false)
 const dangerTarget = ref<{ kind: 'storage'; item: StorageRecord } | { kind: 'token'; item: ApiToken } | null>(null)
+const initialCopyPreferences = readCopyPreferences()
+const copyFormat = ref<LinkFormat>(initialCopyPreferences.format)
+const autoCopy = ref(initialCopyPreferences.autoCopy)
+const copySeparator = ref<LinkSeparator>(initialCopyPreferences.separator)
 
 const tabs = [
   { id: 'base', label: '基础设置', icon: SlidersHorizontal }, { id: 'storage', label: '存储管理', icon: Database },
   { id: 'security', label: '安全与令牌', icon: ShieldCheck }, { id: 'system', label: '系统信息', icon: Info },
 ] as const
 const typeInfo = { local: { label: '本地存储', icon: Server, note: '使用服务器本地磁盘存储文件' }, s3: { label: 'S3 兼容存储', icon: Cloud, note: '适用于 AWS S3、R2、OSS 等对象存储' }, webdav: { label: 'WebDAV', icon: Globe2, note: '通过 WebDAV 协议访问远程服务器' }, telegram: { label: 'Telegram', icon: Send, note: '将图片作为文件发送到频道或群组' } }
+const storageTypeOptions = [
+  { label: '本地存储', value: 'local' },
+  { label: 'S3 兼容存储', value: 's3' },
+  { label: 'WebDAV', value: 'webdav' },
+  { label: 'Telegram', value: 'telegram' },
+]
 const typeFields: Record<string, { key: string; label: string; secret?: boolean; switch?: boolean; placeholder?: string }[]> = {
   local: [{ key: 'data_dir', label: '数据目录', placeholder: 'images' }, { key: 'public_url', label: '外部访问地址', placeholder: 'https://img.example.com/files' }],
   s3: [{ key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com' }, { key: 'region', label: 'Region', placeholder: 'us-east-1' }, { key: 'bucket', label: 'Bucket' }, { key: 'access_key', label: 'Access Key', secret: true }, { key: 'secret_key', label: 'Secret Key', secret: true }, { key: 'public_url', label: '访问域名', placeholder: 'https://cdn.example.com' }, { key: 'path_style', label: '路径风格（Path Style）', switch: true }],
@@ -50,6 +69,13 @@ const namingRuleOptions = [
   { label: '保留原文件名', value: 'original' },
 ]
 const allowedFormats = [{ value: 'image/jpeg', label: 'JPEG' }, { value: 'image/png', label: 'PNG' }, { value: 'image/gif', label: 'GIF' }, { value: 'image/webp', label: 'WebP' }]
+const watermarkPositionOptions = [
+  { label: '左上角', value: 'top-left' },
+  { label: '右上角', value: 'top-right' },
+  { label: '左下角', value: 'bottom-left' },
+  { label: '右下角', value: 'bottom-right' },
+  { label: '居中', value: 'center' },
+]
 const dangerTitle = computed(() => dangerTarget.value?.kind === 'storage' ? '删除这个存储？' : '撤销这个 Token？')
 const dangerDescription = computed(() => {
   if (!dangerTarget.value) return ''
@@ -62,9 +88,18 @@ function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) }
 function setStorageOpen(item: StorageRecord, open: boolean) { if (open) drafts[item.id] = clone(item); expanded.value = open ? item.id : '' }
 function toggleAllowedType(value: string, enabled: boolean) { settings.value.allowed_types = enabled ? [...new Set([...settings.value.allowed_types, value])] : settings.value.allowed_types.filter((item) => item !== value) }
 function addStorage() {
-  const id = `s3-${Date.now().toString(36)}`
-  const item: StorageRecord = { id, name: '新的 S3 存储', type: 's3', enabled: true, config: {} }
+  const id = `storage-${Date.now().toString(36)}`
+  const item: StorageRecord = { id, name: '新的本地存储', type: 'local', enabled: true, config: {} }
   storages.value.push(item); drafts[id] = clone(item); expanded.value = id
+}
+function updateNewStorageType(item: StorageRecord, value: string) {
+  if (item.created_at || !drafts[item.id] || !(value in typeInfo)) return
+  const type = value as StorageRecord['type']
+  item.type = type
+  item.name = `新的${typeInfo[type].label}`
+  drafts[item.id].type = type
+  drafts[item.id].name = item.name
+  drafts[item.id].config = {}
 }
 async function saveSettings() { saving.value = true; try { settings.value = await putJSON<Settings>('/settings', settings.value); toast('基础设置已保存') } catch (e) { toast(e instanceof Error ? e.message : '保存失败', 'error') } finally { saving.value = false } }
 async function saveStorage(id: string) {
@@ -83,8 +118,16 @@ async function copyToken() { await navigator.clipboard.writeText(newToken.value)
 async function changePassword() { if (password.new_password !== password.confirm) { toast('两次输入的新密码不一致', 'error'); return } try { await putJSON('/auth/password', { current_password: password.current_password, new_password: password.new_password }); toast('密码已修改，请重新登录'); auth.reset() } catch (e) { toast(e instanceof Error ? e.message : '修改失败', 'error') } }
 function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '从未使用' }
 
+watch([copyFormat, autoCopy, copySeparator], () => {
+  writeCopyPreferences({
+    format: copyFormat.value,
+    autoCopy: autoCopy.value,
+    separator: copySeparator.value,
+  })
+})
+
 onMounted(async () => {
-  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = result[0]; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
+  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = { ...result[0], processing: normalizeProcessingSettings(result[0].processing) }; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
 })
 </script>
 
@@ -97,13 +140,15 @@ onMounted(async () => {
         <header class="settings-heading"><div><h1>基础设置</h1><p>调整站点信息、上传限制与文件命名方式。</p></div><button class="primary-button" :disabled="saving" @click="saveSettings"><Save :size="18"/>保存设置</button></header>
         <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
         <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong><small>关闭时将按 SHA-256 自动去重</small></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
+        <section class="form-section processing-settings"><h2>图片处理</h2><p class="section-note">原图始终保留。WebP 和水印图会作为独立派生版本生成，处理失败不影响原图上传。</p><label class="switch-row"><span><strong>生成 WebP 版本</strong><small>为支持的静态图片额外生成 WebP 派生文件</small></span><UiSwitch v-model="settings.processing.generate_webp" aria-label="生成 WebP 版本" /></label><div class="form-grid processing-fields"><label>WebP 质量<input v-model.number="settings.processing.webp_quality" type="number" min="1" max="100" :disabled="!settings.processing.generate_webp"></label></div><label class="switch-row"><span><strong>生成水印版本</strong><small>保留无水印原图，同时生成带文字水印的派生文件</small></span><UiSwitch v-model="settings.processing.watermark_enabled" aria-label="生成水印版本" /></label><div class="form-grid processing-fields"><label>水印文字<input v-model.trim="settings.processing.watermark_text" maxlength="200" :disabled="!settings.processing.watermark_enabled" placeholder="例如 Feather ImgBed"></label><label>水印位置<UiSelect v-model="settings.processing.watermark_position" :options="watermarkPositionOptions" aria-label="水印位置" /></label></div></section>
+        <section class="form-section"><h2>复制偏好</h2><div class="form-grid"><label>默认链接格式<UiSelect v-model="copyFormat" :options="linkFormatOptions" aria-label="默认链接格式" /></label><label>批量链接分隔方式<UiSelect v-model="copySeparator" :options="linkSeparatorOptions" aria-label="批量链接分隔方式" /></label></div><label class="switch-row"><span><strong>上传完成后自动复制</strong><small>单图立即复制；批量上传在全部任务结束后一次复制成功项</small></span><UiSwitch v-model="autoCopy" aria-label="上传完成后自动复制" /></label></section>
       </TabsContent>
 
       <TabsContent value="storage" class="settings-main">
         <header class="settings-heading"><div><h1>存储管理</h1><p>配置和管理图片存储后端。测试通过后仍需保存才会生效。</p></div><button class="soft-button" @click="addStorage"><Plus :size="18"/>添加存储</button></header>
         <div class="storage-list"><CollapsibleRoot v-for="item in storages" :key="item.id" as="article" class="storage-row" :class="{ expanded: expanded === item.id }" :open="expanded === item.id" @update:open="setStorageOpen(item, $event)">
           <CollapsibleTrigger as-child><button class="storage-summary"><span class="storage-icon"><component :is="typeInfo[item.type].icon" :size="23"/></span><span class="storage-title"><strong>{{ item.name }}</strong><small>{{ typeInfo[item.type].note }}</small></span><span v-if="settings.default_storage_id === item.id" class="default-label">默认</span><span class="status-label" :class="{ on: item.enabled }">{{ item.enabled ? '已启用' : '未启用' }}</span><ChevronDown :size="19"/></button></CollapsibleTrigger>
-          <CollapsibleContent v-if="drafts[item.id]" class="storage-form"><div class="form-grid"><label>存储名称<input v-model="drafts[item.id].name"></label><label class="switch-row compact"><span><strong>启用此存储</strong></span><UiSwitch v-model="drafts[item.id].enabled" :aria-label="`启用${item.name}`" /></label><template v-for="field in typeFields[item.type]" :key="field.key"><label v-if="!field.switch">{{ field.label }}<span class="password-field"><input v-model="drafts[item.id].config[field.key] as string" :type="field.secret && !passwordVisible ? 'password' : 'text'" :placeholder="field.secret && item.config[`${field.key}_configured`] ? '留空表示保持原值' : field.placeholder"><UiTooltip v-if="field.secret" :text="passwordVisible ? '隐藏密钥' : '显示密钥'" side="left"><button type="button" :aria-label="passwordVisible ? '隐藏密钥' : '显示密钥'" @click="passwordVisible = !passwordVisible"><EyeOff v-if="passwordVisible" :size="17"/><Eye v-else :size="17"/></button></UiTooltip></span></label><label v-else class="switch-row compact"><span><strong>{{ field.label }}</strong></span><UiSwitch :model-value="Boolean(drafts[item.id].config[field.key])" :aria-label="field.label" @update:model-value="drafts[item.id].config[field.key] = $event" /></label></template></div><div class="storage-actions"><button v-if="item.id !== settings.default_storage_id" class="text-button danger" @click="requestDanger({ kind: 'storage', item })"><Trash2 :size="17"/>删除</button><span></span><button class="soft-button" :disabled="testing === item.id" @click="testStorage(item.id)"><Wifi :size="17"/>{{ testing === item.id ? '测试中…' : '测试连接' }}</button><button class="primary-button" :disabled="saving" @click="saveStorage(item.id)"><Save :size="17"/>保存配置</button></div></CollapsibleContent>
+          <CollapsibleContent v-if="drafts[item.id]" class="storage-form"><div class="form-grid"><label v-if="!item.created_at">存储类型<UiSelect :model-value="drafts[item.id].type" :options="storageTypeOptions" aria-label="存储类型" @update:model-value="updateNewStorageType(item, $event)" /></label><label>存储名称<input v-model="drafts[item.id].name"></label><label class="switch-row compact"><span><strong>启用此存储</strong></span><UiSwitch v-model="drafts[item.id].enabled" :aria-label="`启用${item.name}`" /></label><template v-for="field in typeFields[drafts[item.id].type]" :key="field.key"><label v-if="!field.switch">{{ field.label }}<span class="password-field"><input v-model="drafts[item.id].config[field.key] as string" :type="field.secret && !passwordVisible ? 'password' : 'text'" :placeholder="field.secret && item.config[`${field.key}_configured`] ? '留空表示保持原值' : field.placeholder"><UiTooltip v-if="field.secret" :text="passwordVisible ? '隐藏密钥' : '显示密钥'" side="left"><button type="button" :aria-label="passwordVisible ? '隐藏密钥' : '显示密钥'" @click="passwordVisible = !passwordVisible"><EyeOff v-if="passwordVisible" :size="17"/><Eye v-else :size="17"/></button></UiTooltip></span></label><label v-else class="switch-row compact"><span><strong>{{ field.label }}</strong></span><UiSwitch :model-value="Boolean(drafts[item.id].config[field.key])" :aria-label="field.label" @update:model-value="drafts[item.id].config[field.key] = $event" /></label></template></div><div class="storage-actions"><button v-if="item.id !== settings.default_storage_id" class="text-button danger" @click="requestDanger({ kind: 'storage', item })"><Trash2 :size="17"/>删除</button><span></span><button class="soft-button" :disabled="testing === item.id" @click="testStorage(item.id)"><Wifi :size="17"/>{{ testing === item.id ? '测试中…' : '测试连接' }}</button><button class="primary-button" :disabled="saving" @click="saveStorage(item.id)"><Save :size="17"/>保存配置</button></div></CollapsibleContent>
         </CollapsibleRoot></div>
       </TabsContent>
 

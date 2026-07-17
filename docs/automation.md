@@ -7,6 +7,10 @@
 
 建议将 `main` 设置为默认分支，日常变更先合并到 `main`，验证完成后再通过 Pull Request 将 `main` 合并到 `product`。
 
+## 依赖更新
+
+Dependabot 每月检查 Go、npm、GitHub Actions 和 Docker 依赖，并将不同生态的更新合并到一个 Pull Request，统一执行持续集成检查。TypeScript 主版本更新暂时忽略，待 `vue-tsc` 明确兼容后再手动升级。
+
 ## 镜像标签
 
 镜像地址为：

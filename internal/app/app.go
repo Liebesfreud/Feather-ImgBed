@@ -22,6 +22,7 @@ type App struct {
 	mux            *http.ServeMux
 	limiter        *rateLimiter
 	trustedProxies []netip.Prefix
+	backendFactory backendFactory
 }
 
 func New(cfg Config, logger *slog.Logger) (*App, error) {
@@ -51,6 +52,7 @@ func New(cfg Config, logger *slog.Logger) (*App, error) {
 		cfg: cfg, db: db, masterKey: key, logger: logger,
 		mux: http.NewServeMux(), limiter: newRateLimiter(), trustedProxies: trustedProxies,
 	}
+	application.backendFactory = application.defaultBackend
 	application.routes()
 	return application, nil
 }
@@ -79,6 +81,12 @@ func (a *App) routes() {
 	a.mux.HandleFunc("GET /api/v1/random", a.randomImage)
 	a.mux.Handle("GET /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.getImage)))
 	a.mux.Handle("DELETE /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.deleteImage)))
+	a.mux.Handle("POST /api/v1/images/bulk", a.requireAuth(http.HandlerFunc(a.bulkImages)))
+	a.mux.Handle("GET /api/v1/trash", a.requireAuth(http.HandlerFunc(a.listTrash)))
+	a.mux.Handle("GET /api/v1/trash/{id}/file/{kind}", a.requireAuth(http.HandlerFunc(a.serveTrashFile)))
+	a.mux.Handle("POST /api/v1/trash/{id}/restore", a.requireAuth(http.HandlerFunc(a.restoreImage)))
+	a.mux.Handle("DELETE /api/v1/trash/{id}", a.requireAuth(http.HandlerFunc(a.purgeImage)))
+	a.mux.Handle("POST /api/v1/trash/purge", a.requireAuth(http.HandlerFunc(a.purgeTrash)))
 
 	a.mux.Handle("GET /api/v1/storages", a.requireAuth(http.HandlerFunc(a.listStorages)))
 	a.mux.Handle("POST /api/v1/storages/test", a.requireAuth(http.HandlerFunc(a.testStorage)))
@@ -88,6 +96,9 @@ func (a *App) routes() {
 	a.mux.Handle("PUT /api/v1/settings", a.requireAuth(http.HandlerFunc(a.putSettings)))
 	a.mux.Handle("GET /api/v1/system", a.requireAuth(http.HandlerFunc(a.systemInfo)))
 
+	a.registerOrganizationRoutes()
+	a.registerImportRoutes()
+
 	a.mux.HandleFunc("GET /files/", a.serveLocalFile)
 	a.mux.HandleFunc("GET /", a.serveFrontend)
 }
@@ -95,7 +106,13 @@ func (a *App) routes() {
 func (a *App) serveLocalFile(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/files/")
 	var storageID string
-	if err := a.db.QueryRowContext(r.Context(), `SELECT storage_id FROM images WHERE storage_type='local' AND object_key=? ORDER BY created_at DESC LIMIT 1`, key).Scan(&storageID); err != nil {
+	if err := a.db.QueryRowContext(r.Context(), `SELECT i.storage_id
+		FROM images i
+		WHERE i.storage_type='local' AND i.deleted_at IS NULL
+			AND (i.object_key=? OR EXISTS (
+				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
+			))
+		ORDER BY i.created_at DESC LIMIT 1`, key, key).Scan(&storageID); err != nil {
 		http.NotFound(w, r)
 		return
 	}
