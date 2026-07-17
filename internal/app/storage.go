@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,7 +96,23 @@ func stringValue(config map[string]any, key string) string {
 }
 func boolValue(config map[string]any, key string) bool { value, _ := config[key].(bool); return value }
 
+func isCloudflareR2Endpoint(config map[string]any) bool {
+	endpoint, err := url.Parse(stringValue(config, "endpoint"))
+	return err == nil && strings.HasSuffix(strings.ToLower(endpoint.Hostname()), ".r2.cloudflarestorage.com")
+}
+
 func publicURL(record StorageRecord, objectKey string) string {
+	if record.Type == "telegram" {
+		return "/tg-files/" + record.ID + "/" + strings.TrimLeft(objectKey, "/")
+	}
+	if record.Type == "s3" && isCloudflareR2Endpoint(record.Config) {
+		proxyPath := "/s3-files/" + record.ID + "/" + strings.TrimLeft(objectKey, "/")
+		base := strings.TrimRight(stringValue(record.Config, "public_url"), "/")
+		if address, err := url.Parse(base); err == nil && strings.HasSuffix(strings.ToLower(address.Hostname()), ".r2.cloudflarestorage.com") {
+			base = ""
+		}
+		return base + proxyPath
+	}
 	base := strings.TrimRight(stringValue(record.Config, "public_url"), "/")
 	if base == "" {
 		return "/files/" + strings.TrimLeft(objectKey, "/")
@@ -325,19 +342,25 @@ func (s *webDAVStorage) Test(ctx context.Context) error {
 }
 
 type telegramStorage struct {
-	token, chatID, publicURL string
+	token, chatID, apiDomain string
 	client                   *http.Client
 }
 
 func newTelegramStorage(c map[string]any) (*telegramStorage, error) {
-	s := &telegramStorage{token: stringValue(c, "bot_token"), chatID: stringValue(c, "chat_id"), publicURL: stringValue(c, "public_url"), client: &http.Client{Timeout: 60 * time.Second}}
-	if s.token == "" || s.chatID == "" || s.publicURL == "" {
-		return nil, errors.New("Telegram Bot Token、Chat ID 和公开代理地址不能为空")
+	apiDomain := strings.TrimRight(stringValue(c, "proxy_url"), "/")
+	if apiDomain == "" {
+		apiDomain = "https://api.telegram.org"
+	} else if !strings.HasPrefix(apiDomain, "http://") && !strings.HasPrefix(apiDomain, "https://") {
+		apiDomain = "https://" + apiDomain
+	}
+	s := &telegramStorage{token: stringValue(c, "bot_token"), chatID: stringValue(c, "chat_id"), apiDomain: apiDomain, client: &http.Client{Timeout: 60 * time.Second}}
+	if s.token == "" || s.chatID == "" {
+		return nil, errors.New("Telegram Bot Token 和 Chat ID 不能为空")
 	}
 	return s, nil
 }
 func (s *telegramStorage) api(method string) string {
-	return "https://api.telegram.org/bot" + s.token + "/" + method
+	return s.apiDomain + "/bot" + s.token + "/" + method
 }
 func (s *telegramStorage) Put(ctx context.Context, key string, r io.Reader, _ int64, _ string) (string, error) {
 	body, pipe := io.Pipe()
@@ -360,12 +383,19 @@ func (s *telegramStorage) Put(ctx context.Context, key string, r io.Reader, _ in
 		Description string `json:"description"`
 		Result      struct {
 			MessageID int `json:"message_id"`
+			Document  struct {
+				FileID string `json:"file_id"`
+			} `json:"document"`
 		} `json:"result"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&result) != nil || !result.OK {
 		return "", fmt.Errorf("Telegram 上传失败: %s", result.Description)
 	}
-	return strconv.Itoa(result.Result.MessageID) + "/" + key, nil
+	if result.Result.MessageID <= 0 || result.Result.Document.FileID == "" {
+		return "", errors.New("Telegram 上传响应缺少 message_id 或 file_id")
+	}
+	encodedFileID := base64.RawURLEncoding.EncodeToString([]byte(result.Result.Document.FileID))
+	return "v2/" + strconv.Itoa(result.Result.MessageID) + "/" + encodedFileID + "/" + strings.TrimLeft(key, "/"), nil
 }
 
 func streamTelegramUpload(pipe *io.PipeWriter, writer *multipart.Writer, chatID, key string, source io.Reader) {
@@ -387,6 +417,13 @@ func streamTelegramUpload(pipe *io.PipeWriter, writer *multipart.Writer, chatID,
 }
 func (s *telegramStorage) Delete(ctx context.Context, key string) error {
 	messageID := strings.SplitN(key, "/", 2)[0]
+	if strings.HasPrefix(key, "v2/") {
+		parts := strings.SplitN(key, "/", 4)
+		if len(parts) < 3 {
+			return errors.New("Telegram 对象键无效")
+		}
+		messageID = parts[1]
+	}
 	form := url.Values{"chat_id": {s.chatID}, "message_id": {messageID}}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.api("deleteMessage"), strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -400,8 +437,52 @@ func (s *telegramStorage) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
-func (s *telegramStorage) Open(context.Context, string) (io.ReadCloser, error) {
-	return nil, errors.New("旧 Telegram 对象不支持回读")
+func (s *telegramStorage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	parts := strings.SplitN(key, "/", 4)
+	if len(parts) < 4 || parts[0] != "v2" || parts[2] == "" {
+		return nil, errors.New("旧 Telegram 对象缺少 file_id，无法回读")
+	}
+	fileID, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(fileID) == 0 {
+		return nil, errors.New("Telegram 对象中的 file_id 无效")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.api("getFile")+"?file_id="+url.QueryEscape(string(fileID)), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+		Result      struct {
+			FilePath string `json:"file_path"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("解析 Telegram 文件信息失败: %w", err)
+	}
+	_ = resp.Body.Close()
+	if !result.OK || result.Result.FilePath == "" {
+		return nil, fmt.Errorf("Telegram 获取文件路径失败: %s", result.Description)
+	}
+	fileURL := s.apiDomain + "/file/bot" + s.token + "/" + strings.TrimLeft(result.Result.FilePath, "/")
+	fileReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	fileResp, err := s.client.Do(fileReq)
+	if err != nil {
+		return nil, err
+	}
+	if fileResp.StatusCode < 200 || fileResp.StatusCode >= 300 {
+		_ = fileResp.Body.Close()
+		return nil, fmt.Errorf("Telegram 下载失败: HTTP %d", fileResp.StatusCode)
+	}
+	return fileResp.Body, nil
 }
 func (s *telegramStorage) Test(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.api("getMe"), nil)

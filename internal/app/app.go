@@ -1,9 +1,11 @@
 package app
 
 import (
+	"bufio"
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -100,6 +102,8 @@ func (a *App) routes() {
 	a.registerImportRoutes()
 
 	a.mux.HandleFunc("GET /files/", a.serveLocalFile)
+	a.mux.HandleFunc("GET /s3-files/", a.serveS3File)
+	a.mux.HandleFunc("GET /tg-files/", a.serveTelegramFile)
 	a.mux.HandleFunc("GET /", a.serveFrontend)
 }
 
@@ -143,6 +147,102 @@ func (a *App) serveLocalFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	http.ServeFile(w, r, target)
+}
+
+func (a *App) serveS3File(w http.ResponseWriter, r *http.Request) {
+	pathValue := strings.TrimPrefix(r.URL.Path, "/s3-files/")
+	storageID, key, ok := strings.Cut(pathValue, "/")
+	if !ok || storageID == "" || key == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var exists int
+	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(
+		SELECT 1 FROM images i
+		WHERE i.storage_type='s3' AND i.storage_id=? AND i.deleted_at IS NULL
+			AND (i.object_key=? OR EXISTS (
+				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
+			))
+	)`, storageID, key, key).Scan(&exists); err != nil || exists != 1 {
+		http.NotFound(w, r)
+		return
+	}
+	record, err := a.storageRecord(r.Context(), storageID)
+	if err != nil || record.Type != "s3" || !record.Enabled || !isCloudflareR2Endpoint(record.Config) {
+		http.NotFound(w, r)
+		return
+	}
+	backend, err := a.backend(record)
+	if err != nil {
+		http.Error(w, "S3 存储暂不可用", http.StatusBadGateway)
+		return
+	}
+	reader, err := backend.Open(r.Context(), key)
+	if err != nil {
+		a.logger.Warn("S3 文件回读失败", "storage_id", storageID, "object_key", key, "error", err)
+		http.Error(w, "S3 文件暂不可用", http.StatusBadGateway)
+		return
+	}
+	defer reader.Close()
+
+	buffered := bufio.NewReader(reader)
+	sample, _ := buffered.Peek(512)
+	if len(sample) > 0 {
+		w.Header().Set("Content-Type", http.DetectContentType(sample))
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err := io.Copy(w, buffered); err != nil {
+		a.logger.Warn("S3 文件响应中断", "storage_id", storageID, "object_key", key, "error", err)
+	}
+}
+
+func (a *App) serveTelegramFile(w http.ResponseWriter, r *http.Request) {
+	pathValue := strings.TrimPrefix(r.URL.Path, "/tg-files/")
+	storageID, key, ok := strings.Cut(pathValue, "/")
+	if !ok || storageID == "" || key == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var exists int
+	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(
+		SELECT 1 FROM images i
+		WHERE i.storage_type='telegram' AND i.storage_id=? AND i.deleted_at IS NULL
+			AND (i.object_key=? OR EXISTS (
+				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
+			))
+	)`, storageID, key, key).Scan(&exists); err != nil || exists != 1 {
+		http.NotFound(w, r)
+		return
+	}
+	record, err := a.storageRecord(r.Context(), storageID)
+	if err != nil || record.Type != "telegram" {
+		http.NotFound(w, r)
+		return
+	}
+	backend, err := a.backend(record)
+	if err != nil {
+		http.Error(w, "Telegram 存储暂不可用", http.StatusBadGateway)
+		return
+	}
+	reader, err := backend.Open(r.Context(), key)
+	if err != nil {
+		a.logger.Warn("Telegram 文件回读失败", "storage_id", storageID, "error", err)
+		http.Error(w, "Telegram 文件暂不可用", http.StatusBadGateway)
+		return
+	}
+	defer reader.Close()
+
+	buffered := bufio.NewReader(reader)
+	sample, _ := buffered.Peek(512)
+	if len(sample) > 0 {
+		w.Header().Set("Content-Type", http.DetectContentType(sample))
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err := io.Copy(w, buffered); err != nil {
+		a.logger.Warn("Telegram 文件响应中断", "storage_id", storageID, "error", err)
+	}
 }
 
 func (a *App) health(w http.ResponseWriter, r *http.Request) {

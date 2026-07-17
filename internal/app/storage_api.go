@@ -51,16 +51,19 @@ func validateStorage(record StorageRecord) string {
 	switch record.Type {
 	case "local":
 	case "s3":
-		if stringValue(record.Config, "endpoint") == "" || stringValue(record.Config, "bucket") == "" || stringValue(record.Config, "access_key") == "" || stringValue(record.Config, "secret_key") == "" || stringValue(record.Config, "public_url") == "" {
-			return "S3 Endpoint、Bucket、Access Key、Secret Key 和访问域名不能为空"
+		if stringValue(record.Config, "endpoint") == "" || stringValue(record.Config, "bucket") == "" || stringValue(record.Config, "access_key") == "" || stringValue(record.Config, "secret_key") == "" {
+			return "S3 Endpoint、Bucket、Access Key 和 Secret Key 不能为空"
+		}
+		if !isCloudflareR2Endpoint(record.Config) && stringValue(record.Config, "public_url") == "" {
+			return "非 Cloudflare R2 的 S3 存储必须填写访问域名"
 		}
 	case "webdav":
 		if stringValue(record.Config, "url") == "" || stringValue(record.Config, "username") == "" || stringValue(record.Config, "password") == "" || stringValue(record.Config, "public_url") == "" {
 			return "WebDAV 地址、用户名、密码和访问域名不能为空"
 		}
 	case "telegram":
-		if stringValue(record.Config, "bot_token") == "" || stringValue(record.Config, "chat_id") == "" || stringValue(record.Config, "public_url") == "" {
-			return "Telegram Bot Token、Chat ID 和公开代理地址不能为空"
+		if stringValue(record.Config, "bot_token") == "" || stringValue(record.Config, "chat_id") == "" {
+			return "Telegram Bot Token 和 Chat ID 不能为空"
 		}
 	default:
 		return "存储类型必须是 local、s3、webdav 或 telegram"
@@ -180,7 +183,26 @@ func (a *App) putStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := nowUTC()
-	_, err = a.db.ExecContext(r.Context(), `INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,config=excluded.config,updated_at=excluded.updated_at`, id, input.Name, input.Type, input.Enabled, encrypted, now, now)
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,config=excluded.config,updated_at=excluded.updated_at`, id, input.Name, input.Type, input.Enabled, encrypted, now, now)
+	}
+	if err == nil && exists {
+		urlPrefix := publicURL(input, "")
+		_, err = tx.ExecContext(r.Context(), `UPDATE images
+			SET public_url=? || ltrim(object_key, '/')
+			WHERE storage_id=?`, urlPrefix, id)
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), `UPDATE image_variants
+				SET public_url=? || ltrim(object_key, '/')
+				WHERE image_id IN (SELECT id FROM images WHERE storage_id=?)`, urlPrefix, id)
+		}
+	}
+	if err == nil {
+		err = tx.Commit()
+	} else if tx != nil {
+		_ = tx.Rollback()
+	}
 	if err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "保存存储配置失败")
 		return

@@ -57,9 +57,9 @@ const storageTypeOptions = [
 ]
 const typeFields: Record<string, { key: string; label: string; secret?: boolean; switch?: boolean; placeholder?: string }[]> = {
   local: [{ key: 'data_dir', label: '数据目录', placeholder: 'images' }, { key: 'public_url', label: '外部访问地址', placeholder: 'https://img.example.com/files' }],
-  s3: [{ key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com' }, { key: 'region', label: 'Region', placeholder: 'us-east-1' }, { key: 'bucket', label: 'Bucket' }, { key: 'access_key', label: 'Access Key', secret: true }, { key: 'secret_key', label: 'Secret Key', secret: true }, { key: 'public_url', label: '访问域名', placeholder: 'https://cdn.example.com' }, { key: 'path_style', label: '路径风格（Path Style）', switch: true }],
+  s3: [{ key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com' }, { key: 'region', label: 'Region', placeholder: 'us-east-1' }, { key: 'bucket', label: 'Bucket' }, { key: 'access_key', label: 'Access Key', secret: true }, { key: 'secret_key', label: 'Secret Key', secret: true }, { key: 'public_url', label: '外部访问地址（R2 填图床地址）', placeholder: '例如 https://img.example.com；留空使用相对地址' }, { key: 'path_style', label: '路径风格（Path Style）', switch: true }],
   webdav: [{ key: 'url', label: '服务地址' }, { key: 'username', label: '用户名' }, { key: 'password', label: '密码', secret: true }, { key: 'target_dir', label: '目标目录' }, { key: 'public_url', label: '访问域名' }],
-  telegram: [{ key: 'bot_token', label: 'Bot Token', secret: true }, { key: 'chat_id', label: '频道或群组 ID' }, { key: 'public_url', label: '公开代理地址' }],
+  telegram: [{ key: 'bot_token', label: 'Bot Token', secret: true }, { key: 'chat_id', label: '频道或群组 ID' }, { key: 'proxy_url', label: 'Telegram API 代理地址（可选）', placeholder: 'https://tg-api.example.com' }],
 }
 const enabledStorages = computed(() => storages.value.filter((item) => item.enabled))
 const enabledStorageOptions = computed(() => enabledStorages.value.map((item) => ({ label: item.name, value: item.id })))
@@ -160,7 +160,7 @@ onMounted(async () => {
 
       <TabsContent value="system" class="settings-main">
         <header class="settings-heading"><div><h1>系统信息</h1><p>查看当前服务状态与版本信息。</p></div></header>
-        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.0.1</dd></div></dl></section>
+        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.1.1</dd></div></dl></section>
         <section class="form-section danger-zone"><h2>会话</h2><p>退出当前浏览器上的管理员会话。</p><button class="soft-button danger" @click="auth.logout"><LogOut :size="17"/>退出登录</button></section>
       </TabsContent>
     </template>

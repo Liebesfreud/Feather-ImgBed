@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -63,8 +64,8 @@ func (a *App) RebuildThumbnails(ctx context.Context) (ThumbnailRebuildReport, er
 			report.Items = append(report.Items, result)
 			continue
 		}
-		if record.Type == "telegram" {
-			result.Status, result.Message = "skipped", "Telegram 旧记录缺少稳定的回填下载元数据"
+		if record.Type == "telegram" && !strings.HasPrefix(item.objectKey, "v2/") {
+			result.Status, result.Message = "skipped", "Telegram 旧记录缺少 file_id，无法回填"
 			report.Skipped++
 			report.Items = append(report.Items, result)
 			continue

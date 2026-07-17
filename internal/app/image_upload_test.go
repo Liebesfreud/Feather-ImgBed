@@ -251,3 +251,26 @@ func TestRebuildThumbnailsSkipsTelegram(t *testing.T) {
 		t.Fatalf("Telegram 回填应被跳过: %+v", report)
 	}
 }
+
+func TestRebuildThumbnailsReadsNewTelegramObjects(t *testing.T) {
+	a, _, _ := prepareIngestTest(t)
+	insertImageForTest(t, a, "telegram-v2", nowUTC(), "")
+	if _, err := a.db.Exec(`UPDATE storages SET type='telegram' WHERE id='local'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE images
+		SET storage_type='telegram', object_key='v2/42/ZmlsZS1pZA/telegram-v2.png'
+		WHERE id='telegram-v2'`); err != nil {
+		t.Fatal(err)
+	}
+	storage := &recordingUploadStorage{openContent: pngBytes(t)}
+	a.backendFactory = func(StorageRecord) (storageBackend, error) { return storage, nil }
+
+	report, err := a.RebuildThumbnails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Total != 1 || report.Created != 1 || report.Skipped != 0 {
+		t.Fatalf("新版 Telegram 对象应可回填: %+v", report)
+	}
+}
