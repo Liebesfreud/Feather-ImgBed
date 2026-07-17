@@ -79,7 +79,8 @@ test('图库恢复 query、复制 Markdown 并批量移入回收站', async ({ p
   const imageRequest = calls.find((call) => call.path === '/images')
   expect(imageRequest?.query?.get('order')).toBe('asc')
   expect(imageRequest?.query?.get('from')).toBeTruthy()
-  expect(imageRequest?.query?.get('to')).toBeTruthy()
+  const expectedEndOfDay = await page.evaluate(() => new Date(2026, 6, 17, 23, 59, 59, 999).toISOString())
+  expect(imageRequest?.query?.get('to')).toBe(expectedEndOfDay)
 
   await page.getByRole('button', { name: '批量管理' }).click()
   await page.getByRole('checkbox', { name: '选择 cat.jpg' }).click()

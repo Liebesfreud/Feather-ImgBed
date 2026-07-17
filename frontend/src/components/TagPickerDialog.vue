@@ -46,7 +46,7 @@ watch(() => props.open, (open) => {
           <label v-for="tag in tags" :key="tag.id"><UiCheckbox :model-value="selected.has(tag.id)" :aria-label="tag.name" @update:model-value="toggle(tag.id)"/><i :style="{ background: tag.color }"></i><span>{{ tag.name }}</span><small>{{ tag.image_count }} 张</small></label>
           <p v-if="!tags.length" class="section-note">还没有可用标签，请先在标签管理中创建。</p>
         </div>
-        <footer><button class="soft-button" @click="emit('update:open', false)">取消</button><button class="primary-button" :disabled="busy || !selected.size" @click="emit('save', { action: bulk ? action : 'replace', tagIds: [...selected] })">{{ busy ? '保存中…' : '保存标签' }}</button></footer>
+        <footer><button class="soft-button" @click="emit('update:open', false)">取消</button><button class="primary-button" :disabled="busy || (bulk && !selected.size)" @click="emit('save', { action: bulk ? action : 'replace', tagIds: [...selected] })">{{ busy ? '保存中…' : '保存标签' }}</button></footer>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
