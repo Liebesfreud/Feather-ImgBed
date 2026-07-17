@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -140,6 +141,43 @@ func TestRestoreRejectsSymlinkEntry(t *testing.T) {
 	_ = file.Close()
 	if _, err := RestoreBackup(context.Background(), archive, filepath.Join(parent, "data")); err == nil {
 		t.Fatal("符号链接条目应被拒绝")
+	}
+}
+
+func TestCreateBackupWarnsAboutExternalLocalStorage(t *testing.T) {
+	a := newTestApp(t)
+	external := filepath.Join(t.TempDir(), "external-images")
+	if err := os.MkdirAll(external, 0700); err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := encryptJSON(a.masterKey, map[string]any{"data_dir": external})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := nowUTC()
+	if _, err := a.db.Exec(`INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at)
+		VALUES('external','外部目录','local',1,?,1,?,?)`, encrypted, now, now); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := a.cfg.DataDir
+	keyFile := a.cfg.MasterKeyFile
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report, err := CreateBackup(context.Background(), Config{
+		DataDir: dataDir, MasterKeyFile: keyFile, Version: "test",
+	}, filepath.Join(t.TempDir(), "backup.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, warning := range report.Warnings {
+		if strings.Contains(warning, "external") && strings.Contains(warning, external) && strings.Contains(warning, "单独备份") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("未警告外部本地存储: %+v", report.Warnings)
 	}
 }
 

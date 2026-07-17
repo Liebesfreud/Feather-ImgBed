@@ -71,6 +71,7 @@ func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport,
 	if err != nil {
 		return BackupReport{}, err
 	}
+	warnings = append(warnings, externalLocalStorageWarnings(ctx, cfg, dataDir)...)
 	manifest := BackupManifest{
 		ApplicationVersion: cfg.Version,
 		DatabaseVersion:    databaseVersionFromFile(filepath.Join(dataDir, "feather.db")),
@@ -117,6 +118,53 @@ func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport,
 		return BackupReport{}, err
 	}
 	return BackupReport{Path: output, Manifest: manifest, Warnings: warnings}, nil
+}
+
+func externalLocalStorageWarnings(ctx context.Context, cfg Config, dataDir string) []string {
+	db, err := openReadOnlyDB(filepath.Join(dataDir, "feather.db"))
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	keyPath := cfg.MasterKeyFile
+	if keyPath == "" {
+		keyPath = filepath.Join(dataDir, "master.key")
+	}
+	key, status, message := inspectMasterKey(keyPath)
+	if status == DoctorError {
+		return []string{"无法识别数据目录外的本地存储: " + message}
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id,config FROM storages WHERE type='local' ORDER BY id`)
+	if err != nil {
+		return []string{"无法读取本地存储配置，数据目录外的文件可能未备份: " + err.Error()}
+	}
+	defer rows.Close()
+	var warnings []string
+	for rows.Next() {
+		var id, encrypted string
+		if err := rows.Scan(&id, &encrypted); err != nil {
+			warnings = append(warnings, "无法读取一个本地存储配置，数据目录外的文件可能未备份")
+			continue
+		}
+		config := make(map[string]any)
+		if err := decryptJSON(key, encrypted, &config); err != nil {
+			warnings = append(warnings, "本地存储 "+id+" 的配置无法解密，可能需要单独备份")
+			continue
+		}
+		root := stringValue(config, "data_dir")
+		if root == "" || !filepath.IsAbs(root) {
+			continue
+		}
+		root, err = filepath.Abs(root)
+		if err != nil {
+			warnings = append(warnings, "本地存储 "+id+" 的绝对路径无效，可能需要单独备份")
+			continue
+		}
+		if !pathWithin(dataDir, root) {
+			warnings = append(warnings, "本地存储 "+id+" 位于数据目录外，未包含在归档中，必须单独备份: "+root)
+		}
+	}
+	return warnings
 }
 
 func collectBackupSources(ctx context.Context, cfg Config, dataDir string) ([]backupSource, []string, error) {

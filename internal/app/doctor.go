@@ -228,7 +228,11 @@ func runStorageDoctorChecks(
 		} else {
 			add("local_storage_"+record.ID, DoctorOK, "本地存储目录可写")
 		}
-		imageRows, err := db.QueryContext(ctx, `SELECT object_key FROM images WHERE storage_id=?`, record.ID)
+		imageRows, err := db.QueryContext(ctx, `SELECT object_key FROM images WHERE storage_id=?
+			UNION ALL
+			SELECT v.object_key FROM image_variants v
+			JOIN images i ON i.id=v.image_id
+			WHERE i.storage_id=?`, record.ID, record.ID)
 		if err != nil {
 			add("local_files_"+record.ID, DoctorWarning, "无法检查图片文件: "+err.Error())
 			continue
