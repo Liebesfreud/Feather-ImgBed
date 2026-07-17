@@ -12,6 +12,7 @@ const image = {
   height: 480,
   url: 'https://img.example.com/cat.jpg',
   thumbnail_url: pixel,
+  favorite: false,
   created_at: '2026-07-17T08:00:00Z',
 }
 
@@ -37,6 +38,8 @@ async function mockManagementAPI(page: Page) {
 
     if (path === '/auth/status') return fulfill(route, { initialized: true, authenticated: true, csrf_token: 'e2e-csrf' })
     if (path === '/storages') return fulfill(route, [{ id: 'local', name: '本地存储', type: 'local', enabled: true, config: {} }])
+    if (path === '/tags') return fulfill(route, [])
+    if (/^\/images\/[^/]+\/tags$/.test(path)) return fulfill(route, [])
     if (path === '/images' && request.method() === 'GET') return fulfill(route, { items: galleryItems, next_cursor: '' })
     if (path === '/images/bulk') {
       galleryItems = []

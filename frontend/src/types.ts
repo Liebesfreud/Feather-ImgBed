@@ -19,7 +19,40 @@ export interface ImageItem {
   delete_error?: string
   deleted_at?: string
   purge_error?: string
+  favorite: boolean
+  variants?: ImageVariant[]
   created_at: string
+}
+
+export interface ImageVariant {
+  id: string
+  kind: string
+  url: string
+  mime_type: string
+  size: number
+  width: number
+  height: number
+  created_at: string
+}
+
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  image_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Album {
+  id: string
+  name: string
+  description: string
+  cover_image_id?: string
+  cover_url?: string
+  image_count: number
+  created_at: string
+  updated_at: string
 }
 
 export interface StorageRecord {

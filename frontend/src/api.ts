@@ -34,6 +34,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
 export const postJSON = <T>(path: string, data?: unknown) => api<T>(path, { method: 'POST', body: data ? JSON.stringify(data) : undefined })
 export const putJSON = <T>(path: string, data: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(data) })
+export const patchJSON = <T>(path: string, data: unknown) => api<T>(path, { method: 'PATCH', body: JSON.stringify(data) })
 export const deleteJSON = <T>(path: string) => api<T>(path, { method: 'DELETE' })
 
 export interface UploadRequest<T> {

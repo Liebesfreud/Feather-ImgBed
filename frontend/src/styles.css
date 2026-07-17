@@ -148,6 +148,29 @@ code { font-family: "JetBrains Mono", monospace }
 .confirm-dialog-actions { grid-column: 1/3; display: flex; justify-content: flex-end; gap: 9px; margin-top: 8px }
 .danger-action { color: #fff; background: var(--danger) }.danger-action:hover { background: color-mix(in srgb,var(--danger),#000 12%) }
 .dialog-overlay[data-state=open] { animation: fade-in .16s ease-out }.confirm-dialog[data-state=open] { animation: dialog-in .18s ease-out }
+.form-dialog { position: fixed; z-index: 351; top: 50%; left: 50%; width: min(calc(100% - 32px),560px); max-height: min(720px,calc(100vh - 48px)); padding: 22px; overflow: auto; transform: translate(-50%,-50%); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-lg); outline: none }
+.form-dialog>header { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 12px }
+.form-dialog>header h2 { font-size: 19px }
+.form-dialog>header p { margin-top: 5px; color: var(--muted); font-size: 12px }
+.form-dialog>header>button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: transparent; color: var(--muted) }
+.form-dialog-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: var(--radius); color: var(--primary); background: var(--primary-soft) }
+.form-dialog>footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px }
+.form-dialog[data-state=open] { animation: dialog-in .18s ease-out }
+.dialog-loading { min-height: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted) }
+.tag-create { margin-top: 20px; display: grid; grid-template-columns: 1fr 44px auto; gap: 8px }
+.tag-create>input:first-child, .tag-editor-list article>input:first-child { min-width: 0; height: 40px; padding: 0 11px; border: 1px solid transparent; border-radius: var(--radius); background: var(--raised) }
+.tag-create input[type=color], .tag-editor-list input[type=color] { width: 42px; height: 40px; padding: 4px; border: 0; border-radius: var(--radius); background: var(--raised) }
+.tag-editor-list { margin-top: 15px; display: grid; gap: 6px }
+.tag-editor-list article { display: grid; grid-template-columns: minmax(0,1fr) 42px auto 34px 34px; align-items: center; gap: 6px }
+.tag-editor-list article>span { color: var(--muted); font-size: 11px }
+.tag-editor-list article>button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: transparent; color: var(--muted) }
+.tag-editor-list article>button:hover { color: var(--text); background: var(--raised) }
+.tag-picker-dialog>.ui-select-trigger { margin-top: 18px }
+.tag-picker-list { max-height: 360px; margin-top: 16px; display: grid; gap: 6px; overflow: auto }
+.tag-picker-list label { min-height: 42px; padding: 8px 10px; display: flex; align-items: center; gap: 9px; border-radius: var(--radius); background: var(--raised); cursor: pointer }
+.tag-picker-list label>i, .tag-chips i { width: 9px; height: 9px; flex: none; border-radius: 50% }
+.tag-picker-list label>span { flex: 1; font-weight: 700 }
+.tag-picker-list label>small { color: var(--muted) }
 
 /* Upload */
 .dropzone { min-height: 390px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; border: 1px solid transparent; border-radius: var(--radius); background: var(--surface); cursor: pointer; text-align: center; transition: background .2s, border-color .2s, transform .2s }
@@ -193,6 +216,12 @@ code { font-family: "JetBrains Mono", monospace }
 .sort-select { min-width: 132px!important }
 .manage-button { margin-left: auto }
 .manage-button.active { border-color: var(--text); background: var(--text); color: var(--bg) }
+.organization-toolbar { display: flex; align-items: center; gap: 8px; margin-top: -22px }
+.filter-chip { height: 36px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--neutral); font-size: 12px; font-weight: 700 }
+.filter-chip:hover, .filter-chip.active { border-color: var(--text); color: var(--text) }
+.filter-chip.active { color: var(--primary) }
+.organization-toolbar .tag-filter { width: 170px; height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 7px; border-radius: var(--radius); background: var(--surface); color: var(--muted) }
+.organization-toolbar .tag-filter .ui-select-trigger { height: 36px }
 .gallery-state { min-height: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); text-align: center }
 .gallery-state h2 { color: var(--text); font-size: 22px }
 .empty-art { width: 82px; height: 82px; display: grid; place-items: center; margin-bottom: 5px; border-radius: var(--radius); color: var(--primary); background: var(--surface) }
@@ -205,6 +234,8 @@ code { font-family: "JetBrains Mono", monospace }
 .image-card:hover img { transform: scale(1.025) }
 .select-check { position: absolute; top: 9px; left: 9px; width: 20px; height: 20px; background: rgba(18,18,18,.85) }
 .image-card.selected .select-check { border-color: var(--primary); background: var(--primary) }
+.favorite-card-button { position: absolute; top: 9px; right: 9px; width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: rgba(18,18,18,.76); color: #fff; box-shadow: var(--shadow-sm) }
+.favorite-card-button.active, .preview-actions .favorite { color: var(--primary) }
 .image-caption { min-height: 68px; padding: 12px; display: flex; justify-content: space-between; gap: 8px }
 .image-caption>div { min-width: 0; display: flex; flex-direction: column; gap: 4px }
 .image-caption strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px }
@@ -227,6 +258,8 @@ code { font-family: "JetBrains Mono", monospace }
 .preview-info { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px }
 .preview-info h2 { margin-bottom: 7px; font-size: 20px }
 .preview-info p { margin-top: 3px; color: var(--muted); font-size: 11px }
+.tag-chips { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px }
+.tag-chips span { padding: 3px 7px; display: inline-flex; align-items: center; gap: 5px; border-radius: var(--radius); background: var(--raised); color: var(--neutral); font-size: 10px }
 .preview-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px }.preview-actions .danger { margin-left: 8px }
 .batch-bar { position: fixed; z-index: 45; right: 24px; bottom: 24px; left: 24px; width: max-content; max-width: calc(100% - 48px); min-height: 58px; margin: auto; padding: 8px 10px 8px 18px; display: flex; align-items: center; gap: 5px; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb,var(--surface) 94%,transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px) }
 .batch-bar strong { flex: none; margin-right: 8px; font-size: 13px }
@@ -373,6 +406,8 @@ code { font-family: "JetBrains Mono", monospace }
   .gallery-toolbar label,.gallery-toolbar .gallery-select,.search-control { min-width: 0!important; max-width: none }
   .search-control,.manage-button { grid-column: 1/3 }
   .manage-button { width: 100% }
+  .organization-toolbar { margin-top: -12px; flex-wrap: wrap }
+  .organization-toolbar .tag-filter { flex: 1 }
   .image-grid { columns: 2 140px; column-gap: 10px }
   .image-card { margin-bottom: 10px }
   .image-caption { min-height: 62px; padding: 10px }
@@ -408,6 +443,11 @@ code { font-family: "JetBrains Mono", monospace }
   .token-list article { align-items: flex-start }
   .new-token { align-items: flex-start; flex-wrap: wrap }
   .new-token code { flex-basis: calc(100% - 34px) }
+  .form-dialog { max-height: calc(100vh - 24px); padding: 18px 15px }
+  .tag-create { grid-template-columns: 1fr 42px }
+  .tag-create .primary-button { grid-column: 1/3 }
+  .tag-editor-list article { grid-template-columns: minmax(0,1fr) 40px 34px 34px }
+  .tag-editor-list article>span { display: none }
   .auth-panel { place-items: start center; padding: 74px 24px 32px }
   .auth-form h2 { font-size: 28px }
   .toast-host { top: 74px; right: 12px; left: 12px }
