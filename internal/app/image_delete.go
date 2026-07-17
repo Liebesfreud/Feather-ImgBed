@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -146,7 +148,67 @@ func (a *App) listTrash(w http.ResponseWriter, r *http.Request) {
 		next = encodeTrashCursor(last.DeletedAt, last.ID)
 		items = items[:limit]
 	}
+	for index := range items {
+		if items[index].StorageType != "local" {
+			continue
+		}
+		base := "/api/v1/trash/" + url.PathEscape(items[index].ID) + "/file/"
+		items[index].PublicURL = base + "original"
+		if items[index].ThumbnailURL != "" {
+			items[index].ThumbnailURL = base + "thumbnail"
+		}
+	}
 	writeData(w, r, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
+}
+
+func (a *App) serveTrashFile(w http.ResponseWriter, r *http.Request) {
+	var storageID, objectKey, mimeType string
+	switch r.PathValue("kind") {
+	case "original":
+		err := a.db.QueryRowContext(r.Context(), `SELECT i.storage_id,i.object_key,i.mime_type
+			FROM images i
+			WHERE i.id=? AND i.deleted_at IS NOT NULL AND i.storage_type='local'`,
+			r.PathValue("id")).Scan(&storageID, &objectKey, &mimeType)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+	case "thumbnail":
+		err := a.db.QueryRowContext(r.Context(), `SELECT i.storage_id,v.object_key,v.mime_type
+			FROM images i
+			JOIN image_variants v ON v.image_id=i.id AND v.kind='thumbnail'
+			WHERE i.id=? AND i.deleted_at IS NOT NULL AND i.storage_type='local'`,
+			r.PathValue("id")).Scan(&storageID, &objectKey, &mimeType)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	record, err := a.storageRecord(r.Context(), storageID)
+	if err != nil || record.Type != "local" {
+		http.NotFound(w, r)
+		return
+	}
+	backend, err := a.backend(record)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	file, err := backend.Open(r.Context(), objectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err := io.Copy(w, file); err != nil {
+		a.logger.Warn("发送回收站图片预览失败", "image_id", r.PathValue("id"), "kind", r.PathValue("kind"), "error", err)
+	}
 }
 
 func (a *App) restoreImage(w http.ResponseWriter, r *http.Request) {

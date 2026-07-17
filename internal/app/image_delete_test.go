@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
 	"io"
 	"net/http"
 	"strings"
@@ -163,6 +164,102 @@ func TestTrashPaginationRestoreAndPermanentDelete(t *testing.T) {
 	recorder, _ = request(t, handler, http.MethodGet, "/api/v1/trash?cursor="+normalCursor, nil, cookie, "", "", "")
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("普通图库游标不应能用于回收站，得到 %d", recorder.Code)
+	}
+}
+
+func TestAuthenticatedLocalTrashPreview(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+	content := pngBytes(t)
+	body, contentType := uploadBody(t, content)
+	recorder, response := request(t, handler, http.MethodPost, "/api/v1/images", body, cookie, csrf, "", contentType)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("上传失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var uploaded Image
+	if err := json.Unmarshal(response.Data, &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	recorder, _ = request(t, handler, http.MethodDelete, "/api/v1/images/"+uploaded.ID, nil, cookie, csrf, "", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("移入回收站失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder, response = request(t, handler, http.MethodGet, "/api/v1/trash", nil, cookie, "", "", "")
+	items, _ := responseImages(t, response)
+	if recorder.Code != http.StatusOK || len(items) != 1 {
+		t.Fatalf("读取回收站失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	preview := items[0]
+	expectedBase := "/api/v1/trash/" + uploaded.ID + "/file/"
+	if preview.PublicURL != expectedBase+"original" || preview.ThumbnailURL != expectedBase+"thumbnail" {
+		t.Fatalf("本地回收站预览地址未改写: %+v", preview)
+	}
+
+	for _, target := range []string{preview.PublicURL, preview.ThumbnailURL} {
+		recorder, _ = request(t, handler, http.MethodGet, target, nil, nil, "", "", "")
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("未认证的回收站预览应被拒绝: %s => %d", target, recorder.Code)
+		}
+		recorder, _ = request(t, handler, http.MethodGet, target, nil, cookie, "", "", "")
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("认证后无法读取回收站预览: %s => %d", target, recorder.Code)
+		}
+		if recorder.Header().Get("Content-Type") != "image/png" ||
+			recorder.Header().Get("Cache-Control") != "private, no-store" ||
+			recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("回收站预览响应头错误: %#v", recorder.Header())
+		}
+		if target == preview.PublicURL && !bytes.Equal(recorder.Body.Bytes(), content) {
+			t.Fatal("回收站原图内容不一致")
+		}
+		if target == preview.ThumbnailURL {
+			if _, format, err := image.Decode(bytes.NewReader(recorder.Body.Bytes())); err != nil || format != "png" {
+				t.Fatalf("回收站缩略图内容无效: format=%q err=%v", format, err)
+			}
+		}
+	}
+
+	recorder, _ = request(t, handler, http.MethodGet, uploaded.PublicURL, nil, nil, "", "", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("公开文件接口不应暴露回收站原图，得到 %d", recorder.Code)
+	}
+	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/trash/"+uploaded.ID+"/restore", nil, cookie, csrf, "", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("恢复失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	recorder, _ = request(t, handler, http.MethodGet, preview.PublicURL, nil, cookie, "", "", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("恢复后回收站预览应失效，得到 %d", recorder.Code)
+	}
+	recorder, _ = request(t, handler, http.MethodGet, uploaded.PublicURL, nil, nil, "", "", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("恢复后公开原图应重新可用，得到 %d", recorder.Code)
+	}
+}
+
+func TestTrashThumbnailPreviewRequiresExistingLocalVariant(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, _ := initializeTestApp(t, handler)
+	deletedAt := nowUTC()
+	insertImageForTest(t, a, "without-thumbnail", deletedAt, deletedAt)
+
+	recorder, response := request(t, handler, http.MethodGet, "/api/v1/trash", nil, cookie, "", "", "")
+	items, _ := responseImages(t, response)
+	if recorder.Code != http.StatusOK || len(items) != 1 || items[0].ThumbnailURL != "" {
+		t.Fatalf("无缩略图记录不应返回缩略图预览地址: %d %+v", recorder.Code, items)
+	}
+	recorder, _ = request(t, handler, http.MethodGet,
+		"/api/v1/trash/without-thumbnail/file/thumbnail", nil, cookie, "", "", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("缺失的缩略图预览应返回 404，得到 %d", recorder.Code)
+	}
+	recorder, _ = request(t, handler, http.MethodGet,
+		"/api/v1/trash/without-thumbnail/file/unknown", nil, cookie, "", "", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("未知预览类型应返回 404，得到 %d", recorder.Code)
 	}
 }
 

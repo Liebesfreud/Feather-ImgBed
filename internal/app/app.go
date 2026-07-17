@@ -83,6 +83,7 @@ func (a *App) routes() {
 	a.mux.Handle("DELETE /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.deleteImage)))
 	a.mux.Handle("POST /api/v1/images/bulk", a.requireAuth(http.HandlerFunc(a.bulkImages)))
 	a.mux.Handle("GET /api/v1/trash", a.requireAuth(http.HandlerFunc(a.listTrash)))
+	a.mux.Handle("GET /api/v1/trash/{id}/file/{kind}", a.requireAuth(http.HandlerFunc(a.serveTrashFile)))
 	a.mux.Handle("POST /api/v1/trash/{id}/restore", a.requireAuth(http.HandlerFunc(a.restoreImage)))
 	a.mux.Handle("DELETE /api/v1/trash/{id}", a.requireAuth(http.HandlerFunc(a.purgeImage)))
 	a.mux.Handle("POST /api/v1/trash/purge", a.requireAuth(http.HandlerFunc(a.purgeTrash)))
