@@ -15,7 +15,10 @@ export interface ImageItem {
   width?: number
   height?: number
   url: string
+  thumbnail_url?: string
   delete_error?: string
+  deleted_at?: string
+  purge_error?: string
   created_at: string
 }
 
