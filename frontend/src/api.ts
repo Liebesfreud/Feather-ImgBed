@@ -35,3 +35,45 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 export const postJSON = <T>(path: string, data?: unknown) => api<T>(path, { method: 'POST', body: data ? JSON.stringify(data) : undefined })
 export const putJSON = <T>(path: string, data: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(data) })
 export const deleteJSON = <T>(path: string) => api<T>(path, { method: 'DELETE' })
+
+export interface UploadRequest<T> {
+  promise: Promise<T>
+  cancel: () => void
+}
+
+export function uploadFile<T>(
+  path: string,
+  body: FormData,
+  onProgress: (percent: number) => void,
+): UploadRequest<T> {
+  const xhr = new XMLHttpRequest()
+  const promise = new Promise<T>((resolve, reject) => {
+    xhr.open('POST', `/api/v1${path}`)
+    xhr.withCredentials = true
+    if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+      }
+    }
+    xhr.onload = () => {
+      let payload: ApiEnvelope<T>
+      try {
+        payload = JSON.parse(xhr.responseText) as ApiEnvelope<T>
+      } catch {
+        reject(new ApiError('服务器返回了无法识别的响应'))
+        return
+      }
+      if (xhr.status < 200 || xhr.status >= 300 || !payload.success) {
+        if (xhr.status === 401 && !path.includes('/auth/')) window.dispatchEvent(new CustomEvent('feather:unauthorized'))
+        reject(new ApiError(payload.error?.message || '上传失败，请稍后重试', payload.error?.code, payload.request_id))
+        return
+      }
+      resolve(payload.data)
+    }
+    xhr.onerror = () => reject(new ApiError('网络连接中断，请检查网络后重试', 'NETWORK_ERROR'))
+    xhr.onabort = () => reject(new ApiError('上传已取消', 'UPLOAD_ABORTED'))
+    xhr.send(body)
+  })
+  return { promise, cancel: () => xhr.abort() }
+}

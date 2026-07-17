@@ -170,11 +170,11 @@ code { font-family: "JetBrains Mono", monospace }
 .file-meta span, .upload-status>span { color: var(--muted); font-size: 11px }
 .upload-status>span { display: flex; align-items: center; gap: 6px }
 .upload-status.success>span { color: var(--primary) }
-.upload-status.error>span { color: var(--danger) }
+.upload-status.error>span, .upload-status.cancelled>span { color: var(--danger) }
 .progress { height: 3px; overflow: hidden; margin-top: 7px; border-radius: var(--radius); background: var(--raised) }
 .progress i { display: block; height: 100%; background: var(--warning); transition: width .18s }
 .upload-status.success .progress i { background: var(--primary) }
-.upload-status.error .progress i { background: var(--danger) }
+.upload-status.error .progress i, .upload-status.cancelled .progress i { background: var(--danger) }
 .storage-tag, .default-label, .status-label { width: max-content; padding: 4px 9px; border-radius: var(--radius); background: var(--raised); color: var(--neutral); font-size: 11px }
 .row-actions { display: flex; justify-content: flex-end; gap: 5px }
 .row-actions button, .preview-actions button { height: 34px; padding: 0 9px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: var(--radius); background: transparent; color: var(--neutral); font-size: 11px }
