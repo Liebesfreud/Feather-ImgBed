@@ -92,6 +92,9 @@ func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport,
 		}
 	}
 	manifest.FileCount = len(manifest.Files)
+	if !manifest.IncludesMasterKey {
+		warnings = append(warnings, "备份未包含主密钥；恢复远程存储凭据时必须另行提供原主密钥")
+	}
 
 	if err := os.MkdirAll(filepath.Dir(output), 0700); err != nil {
 		return BackupReport{}, err
@@ -299,7 +302,7 @@ func writeBackupArchive(ctx context.Context, output *os.File, sources []backupSo
 	if _, err := tarWriter.Write(manifestJSON); err != nil {
 		return err
 	}
-	for _, source := range sources {
+	for index, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -314,7 +317,8 @@ func writeBackupArchive(ctx context.Context, output *os.File, sources []backupSo
 		if err != nil {
 			return err
 		}
-		written, copyErr := copyWithContext(ctx, tarWriter, io.LimitReader(file, source.Info.Size()+1))
+		hash := sha256.New()
+		written, copyErr := copyWithContext(ctx, io.MultiWriter(tarWriter, hash), io.LimitReader(file, source.Info.Size()+1))
 		closeErr := file.Close()
 		if copyErr != nil {
 			return copyErr
@@ -324,6 +328,10 @@ func writeBackupArchive(ctx context.Context, output *os.File, sources []backupSo
 		}
 		if written != source.Info.Size() {
 			return fmt.Errorf("%s 在备份期间发生变化", source.ArchivePath)
+		}
+		if index >= len(manifest.Files) ||
+			!strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), manifest.Files[index].SHA256) {
+			return fmt.Errorf("%s 在生成清单后发生变化", source.ArchivePath)
 		}
 	}
 	return closeWriters()

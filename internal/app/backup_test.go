@@ -181,6 +181,58 @@ func TestCreateBackupWarnsAboutExternalLocalStorage(t *testing.T) {
 	}
 }
 
+func TestBackupArchiveRechecksDigestWhileWriting(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "feather.db")
+	if err := os.WriteFile(sourcePath, []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.CreateTemp(t.TempDir(), "backup-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	manifest := BackupManifest{
+		FileCount: 1,
+		Files: []BackupFile{{
+			Path: "feather.db", Size: info.Size(),
+			SHA256: hex.EncodeToString(make([]byte, sha256.Size)),
+		}},
+	}
+	err = writeBackupArchive(context.Background(), output, []backupSource{{
+		ArchivePath: "feather.db", SourcePath: sourcePath, Info: info,
+	}}, manifest)
+	if err == nil || !strings.Contains(err.Error(), "生成清单后发生变化") {
+		t.Fatalf("归档写入未复检清单摘要: %v", err)
+	}
+}
+
+func TestCreateBackupWarnsWhenMasterKeyIsMissing(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "note.txt"), []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := CreateBackup(context.Background(), Config{DataDir: dataDir, Version: "test"}, filepath.Join(t.TempDir(), "backup.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Manifest.IncludesMasterKey {
+		t.Fatal("不存在的主密钥不应标记为已包含")
+	}
+	found := false
+	for _, warning := range report.Warnings {
+		if strings.Contains(warning, "未包含主密钥") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("主密钥缺失时未输出警告: %+v", report.Warnings)
+	}
+}
+
 type rawBackupEntry struct {
 	name    string
 	content []byte
