@@ -2,13 +2,13 @@
 
 [![Release](https://img.shields.io/github/v/release/Liebesfreud/Feather-ImgBed?display_name=tag&sort=semver)](https://github.com/Liebesfreud/Feather-ImgBed/releases)
 [![CI](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml)
-[![GHCR](https://img.shields.io/badge/GHCR-v0.0.1-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/Feather-ImgBed/pkgs/container/feather-imgbed)
+[![GHCR](https://img.shields.io/badge/GHCR-v0.1.0-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/Feather-ImgBed/pkgs/container/feather-imgbed)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 轻量、现代、可自托管的多存储图床。提供图片上传、管理、分享和随机图 API，数据与存储凭据完全由你掌控。
 
-当前稳定版本：**v0.0.1**
+当前稳定版本：**v0.1.0**
 
 ## 功能特性
 
@@ -40,7 +40,7 @@ docker run -d \
   -p 8080:8080 \
   -v feather-data:/data \
   -e FEATHER_SECURE_COOKIE=false \
-  ghcr.io/liebesfreud/feather-imgbed:0.0.1
+  ghcr.io/liebesfreud/feather-imgbed:0.1.0
 ```
 
 启动后访问 <http://127.0.0.1:8080>，根据页面提示创建管理员账户并填写站点访问地址。
@@ -68,7 +68,7 @@ docker compose up -d --build
 ```yaml
 services:
   feather-imgbed:
-    image: ghcr.io/liebesfreud/feather-imgbed:0.0.1
+    image: ghcr.io/liebesfreud/feather-imgbed:0.1.0
     container_name: feather-imgbed
     restart: unless-stopped
     ports:
@@ -235,10 +235,10 @@ go build ./...
 - `product`：生产分支，提交后自动构建 GHCR 候选镜像。
 - 正式 Release 使用 `vX.Y.Z` 标签；标签提交必须存在于 `product` 分支。
 
-`v0.0.1` 正式镜像地址：
+`v0.1.0` 正式镜像地址：
 
 ```text
-ghcr.io/liebesfreud/feather-imgbed:0.0.1
+ghcr.io/liebesfreud/feather-imgbed:0.1.0
 ```
 
 完整的分支保护、镜像标签和 Release 流程见 [分支与发布自动化](docs/automation.md)。
