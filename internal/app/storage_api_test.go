@@ -28,16 +28,20 @@ func TestCloudflareR2UsesImageBedProxy(t *testing.T) {
 	if message := validateStorage(record); message != "" {
 		t.Fatalf("R2 不应要求公开访问域名，得到 %q", message)
 	}
-	if got := publicURL(record, "variants/image/thumbnail.jpg"); got != "/s3-files/r2/variants/image/thumbnail.jpg" {
+	if got := publicURL(record, "variants/image/thumbnail.jpg", ""); got != "/s3-files/r2/variants/image/thumbnail.jpg" {
 		t.Fatalf("R2 应使用图床代理地址，得到 %q", got)
 	}
 	record.Config["public_url"] = "https://img.example.com"
-	if got := publicURL(record, "image.jpg"); got != "https://img.example.com/s3-files/r2/image.jpg" {
+	if got := publicURL(record, "image.jpg", "https://site.example.com"); got != "https://img.example.com/s3-files/r2/image.jpg" {
 		t.Fatalf("R2 应使用图床的外部代理地址，得到 %q", got)
 	}
 	record.Config["public_url"] = "https://account.r2.cloudflarestorage.com"
-	if got := publicURL(record, "image.jpg"); got != "/s3-files/r2/image.jpg" {
+	if got := publicURL(record, "image.jpg", "https://site.example.com"); got != "https://site.example.com/s3-files/r2/image.jpg" {
 		t.Fatalf("误填为 R2 Endpoint 时不应生成 R2 直链，得到 %q", got)
+	}
+	record.Config["public_url"] = ""
+	if got := publicURL(record, "image.jpg", "https://site.example.com/"); got != "https://site.example.com/s3-files/r2/image.jpg" {
+		t.Fatalf("R2 应回退到站点访问地址，得到 %q", got)
 	}
 }
 
@@ -84,11 +88,55 @@ func TestUpdatingStorageRewritesExistingObjectURLs(t *testing.T) {
 	if err := a.db.QueryRow(`SELECT public_url FROM image_variants WHERE id='variant'`).Scan(&thumbnailURL); err != nil {
 		t.Fatal(err)
 	}
-	if originalURL != "/s3-files/r2/image.jpg" {
+	if originalURL != "http://img.test/s3-files/r2/image.jpg" {
 		t.Fatalf("原图链接未更新: %q", originalURL)
 	}
-	if thumbnailURL != "/s3-files/r2/variants/image/thumbnail.jpg" {
+	if thumbnailURL != "http://img.test/s3-files/r2/variants/image/thumbnail.jpg" {
 		t.Fatalf("缩略图链接未更新: %q", thumbnailURL)
+	}
+}
+
+func TestUpdatingSiteURLRewritesExistingR2URLs(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+
+	record := s3StorageRecord("")
+	encrypted, err := encryptJSON(a.masterKey, record.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := nowUTC()
+	if _, err := a.db.Exec(`INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at)
+		VALUES(?,?,?,?,?,1,?,?)`, record.ID, record.Name, record.Type, 1, encrypted, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO images(
+		id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,created_at
+	) VALUES('image','hash','photo.jpg','image.jpg','s3','r2','image/jpeg',10,'/s3-files/r2/image.jpg',?)`, now); err != nil {
+		t.Fatal(err)
+	}
+
+	settings, err := loadSettings(t.Context(), a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.SiteURL = "https://new.example.com"
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder, _ := request(t, handler, http.MethodPut, "/api/v1/settings", strings.NewReader(string(payload)), cookie, csrf, "", "application/json")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("更新站点设置失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+
+	var publicAddress string
+	if err := a.db.QueryRow(`SELECT public_url FROM images WHERE id='image'`).Scan(&publicAddress); err != nil {
+		t.Fatal(err)
+	}
+	if publicAddress != "https://new.example.com/s3-files/r2/image.jpg" {
+		t.Fatalf("站点地址更新后 R2 链接未同步: %q", publicAddress)
 	}
 }
 

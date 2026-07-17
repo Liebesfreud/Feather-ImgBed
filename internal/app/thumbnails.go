@@ -141,7 +141,7 @@ func (a *App) rebuildOneThumbnail(
 	}
 	variant := ImageVariant{
 		ID: newUUIDv7(), ImageID: imageID, Kind: "thumbnail", ObjectKey: storedKey,
-		PublicURL: publicURL(record, storedKey), MIMEType: generated.MIMEType, Size: generated.Size,
+		PublicURL: publicURL(record, storedKey, settings.SiteURL), MIMEType: generated.MIMEType, Size: generated.Size,
 		Width: generated.Width, Height: generated.Height, CreatedAt: nowUTC(),
 	}
 	_, err = a.db.ExecContext(ctx, `INSERT INTO image_variants(

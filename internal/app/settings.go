@@ -116,7 +116,11 @@ func (a *App) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if err := saveSettingsTx(r.Context(), tx, settings); err != nil || tx.Commit() != nil {
+	if err := saveSettingsTx(r.Context(), tx, settings); err != nil {
+		writeError(w, r, 500, "DATABASE_ERROR", "保存设置失败")
+		return
+	}
+	if err := a.refreshProxyPublicURLs(r.Context(), tx, settings.SiteURL); err != nil || tx.Commit() != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "保存设置失败")
 		return
 	}

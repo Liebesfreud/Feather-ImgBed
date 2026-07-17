@@ -188,7 +188,7 @@ func (a *App) putStorage(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,config=excluded.config,updated_at=excluded.updated_at`, id, input.Name, input.Type, input.Enabled, encrypted, now, now)
 	}
 	if err == nil && exists {
-		urlPrefix := publicURL(input, "")
+		urlPrefix := publicURL(input, "", settings.SiteURL)
 		_, err = tx.ExecContext(r.Context(), `UPDATE images
 			SET public_url=? || ltrim(object_key, '/')
 			WHERE storage_id=?`, urlPrefix, id)

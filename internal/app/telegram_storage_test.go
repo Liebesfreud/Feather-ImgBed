@@ -138,7 +138,7 @@ func TestTelegramPublicFileRoute(t *testing.T) {
 	if _, err := a.db.Exec(`INSERT INTO images(
 		id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,created_at
 	) VALUES('tg-image','hash','test.png',?,'telegram','local','image/png',10,?,?)`,
-		objectKey, publicURL(StorageRecord{ID: "local", Type: "telegram"}, objectKey), nowUTC()); err != nil {
+		objectKey, publicURL(StorageRecord{ID: "local", Type: "telegram"}, objectKey, ""), nowUTC()); err != nil {
 		t.Fatal(err)
 	}
 	content := pngBytes(t)
@@ -173,7 +173,7 @@ func TestTelegramConfigDoesNotRequireProxy(t *testing.T) {
 	if message := validateStorage(record); message != "" {
 		t.Fatalf("未配置代理时校验失败: %s", message)
 	}
-	if got := publicURL(record, "v2/42/ZmlsZS1pZA/test.png"); got != "/tg-files/telegram/v2/42/ZmlsZS1pZA/test.png" {
+	if got := publicURL(record, "v2/42/ZmlsZS1pZA/test.png", ""); got != "/tg-files/telegram/v2/42/ZmlsZS1pZA/test.png" {
 		t.Fatalf("公开地址=%q", got)
 	}
 }

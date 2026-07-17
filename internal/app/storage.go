@@ -101,15 +101,18 @@ func isCloudflareR2Endpoint(config map[string]any) bool {
 	return err == nil && strings.HasSuffix(strings.ToLower(endpoint.Hostname()), ".r2.cloudflarestorage.com")
 }
 
-func publicURL(record StorageRecord, objectKey string) string {
+func publicURL(record StorageRecord, objectKey, siteURL string) string {
 	if record.Type == "telegram" {
-		return "/tg-files/" + record.ID + "/" + strings.TrimLeft(objectKey, "/")
+		return strings.TrimRight(siteURL, "/") + "/tg-files/" + record.ID + "/" + strings.TrimLeft(objectKey, "/")
 	}
 	if record.Type == "s3" && isCloudflareR2Endpoint(record.Config) {
 		proxyPath := "/s3-files/" + record.ID + "/" + strings.TrimLeft(objectKey, "/")
 		base := strings.TrimRight(stringValue(record.Config, "public_url"), "/")
 		if address, err := url.Parse(base); err == nil && strings.HasSuffix(strings.ToLower(address.Hostname()), ".r2.cloudflarestorage.com") {
 			base = ""
+		}
+		if base == "" {
+			base = strings.TrimRight(siteURL, "/")
 		}
 		return base + proxyPath
 	}

@@ -160,7 +160,7 @@ onMounted(async () => {
 
       <TabsContent value="system" class="settings-main">
         <header class="settings-heading"><div><h1>系统信息</h1><p>查看当前服务状态与版本信息。</p></div></header>
-        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.1.1</dd></div></dl></section>
+        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.1.2</dd></div></dl></section>
         <section class="form-section danger-zone"><h2>会话</h2><p>退出当前浏览器上的管理员会话。</p><button class="soft-button danger" @click="auth.logout"><LogOut :size="17"/>退出登录</button></section>
       </TabsContent>
     </template>

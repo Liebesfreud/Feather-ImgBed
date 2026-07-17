@@ -2,13 +2,13 @@
 
 [![Release](https://img.shields.io/github/v/release/Liebesfreud/Feather-ImgBed?display_name=tag&sort=semver)](https://github.com/Liebesfreud/Feather-ImgBed/releases)
 [![CI](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Liebesfreud/Feather-ImgBed/actions/workflows/ci.yml)
-[![GHCR](https://img.shields.io/badge/GHCR-v0.1.1-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/Feather-ImgBed/pkgs/container/feather-imgbed)
+[![GHCR](https://img.shields.io/badge/GHCR-v0.1.2-2496ED?logo=docker&logoColor=white)](https://github.com/Liebesfreud/Feather-ImgBed/pkgs/container/feather-imgbed)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 轻量、现代、可自托管的多存储图床。提供图片上传、管理、分享和随机图 API，数据与存储凭据完全由你掌控。
 
-当前稳定版本：**v0.1.1**
+当前稳定版本：**v0.1.2**
 
 ## 功能特性
 
@@ -40,7 +40,7 @@ docker run -d \
   -p 8080:8080 \
   -v feather-data:/data \
   -e FEATHER_SECURE_COOKIE=false \
-  ghcr.io/liebesfreud/feather-imgbed:0.1.1
+  ghcr.io/liebesfreud/feather-imgbed:0.1.2
 ```
 
 启动后访问 <http://127.0.0.1:8080>，根据页面提示创建管理员账户并填写站点访问地址。
@@ -68,7 +68,7 @@ docker compose up -d --build
 ```yaml
 services:
   feather-imgbed:
-    image: ghcr.io/liebesfreud/feather-imgbed:0.1.1
+    image: ghcr.io/liebesfreud/feather-imgbed:0.1.2
     container_name: feather-imgbed
     restart: unless-stopped
     ports:
@@ -131,7 +131,7 @@ feather-imgbed thumbnails rebuild -data ./data
 
 更新存储时，敏感字段留空表示保持原值。停用或删除默认存储前，必须先更换系统默认存储；仍有关联图片的存储不能删除。
 
-Cloudflare R2 的 `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` 填写在 `endpoint`；`public_url` 填图床的外部访问地址（例如 `https://img.example.com`），留空则返回本站相对地址。R2 原图和派生图会由 Feather-ImgBed 使用保存的 S3 凭据回源，并通过本站 `/s3-files/` 路由提供；Bucket 无需开启公开访问。误填在 `public_url` 中的 R2 Endpoint 会被忽略。重新保存存储配置后，已有图片链接会一并切换到代理地址。
+Cloudflare R2 的 `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` 填写在 `endpoint`；`public_url` 可填写图床的外部访问地址（例如 `https://img.example.com`），留空时自动使用系统的“站点访问地址”。R2 原图和派生图会由 Feather-ImgBed 使用保存的 S3 凭据回源，并通过本站 `/s3-files/` 路由提供；Bucket 无需开启公开访问。误填在 `public_url` 中的 R2 Endpoint 会被忽略。程序启动或站点地址变更时，已有图片链接会一并更新为完整代理地址。
 
 Telegram 上传记录会保存 Bot API 返回的 `message_id` 和 `file_id`：前者用于删除频道或群组中的消息，后者用于通过本站的 `/tg-files/` 路由回源读取文件。`proxy_url` 不是图片公开域名，而是可选的 Telegram Bot API 反向代理地址；留空时直接使用 `https://api.telegram.org`。升级前已经上传且没有 `file_id` 的 Telegram 对象仍无法回读，但保留原有删除兼容性。
 
@@ -239,10 +239,10 @@ go build ./...
 - `product`：生产分支，提交后自动构建 GHCR 候选镜像。
 - 正式 Release 使用 `vX.Y.Z` 标签；标签提交必须存在于 `product` 分支。
 
-`v0.1.1` 正式镜像地址：
+`v0.1.2` 正式镜像地址：
 
 ```text
-ghcr.io/liebesfreud/feather-imgbed:0.1.1
+ghcr.io/liebesfreud/feather-imgbed:0.1.2
 ```
 
 完整的分支保护、镜像标签和 Release 流程见 [分支与发布自动化](docs/automation.md)。

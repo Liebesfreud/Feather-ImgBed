@@ -42,10 +42,16 @@ function escapeMarkdown(value: string) {
 }
 
 export function formatImageLink(image: Pick<ImageItem, 'original_name' | 'url'>, format: LinkFormat) {
-  if (format === 'markdown') return `![${escapeMarkdown(image.original_name)}](${image.url})`
-  if (format === 'html') return `<img src="${escapeHTML(image.url)}" alt="${escapeHTML(image.original_name)}">`
-  if (format === 'bbcode') return `[img]${image.url}[/img]`
-  return image.url
+  let imageURL = image.url
+  try {
+    imageURL = new URL(image.url, window.location.origin).href
+  } catch {
+    // 保留无法解析的原始值，由调用方继续展示。
+  }
+  if (format === 'markdown') return `![${escapeMarkdown(image.original_name)}](${imageURL})`
+  if (format === 'html') return `<img src="${escapeHTML(imageURL)}" alt="${escapeHTML(image.original_name)}">`
+  if (format === 'bbcode') return `[img]${imageURL}[/img]`
+  return imageURL
 }
 
 export function joinImageLinks(

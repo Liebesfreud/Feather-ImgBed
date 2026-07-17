@@ -190,14 +190,14 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 	img := Image{
 		ID: id, Hash: hash, OriginalName: safeOriginalName(filename), ObjectKey: storedKey,
 		StorageType: record.Type, StorageID: record.ID, MIMEType: mime, Size: written,
-		Width: config.Width, Height: config.Height, PublicURL: publicURL(record, storedKey), CreatedAt: nowUTC(),
+		Width: config.Width, Height: config.Height, PublicURL: publicURL(record, storedKey, settings.SiteURL), CreatedAt: nowUTC(),
 	}
 
 	variants := make([]*ImageVariant, 0, 3)
 	if generated, generateErr := generateThumbnail(temp, mime, id); generateErr != nil {
 		a.logger.Warn("缩略图生成失败，保留原图", "request_id", requestID, "image_id", id, "error", generateErr)
 	} else {
-		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, id, "thumbnail", img.CreatedAt, generated)
+		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, "thumbnail", img.CreatedAt, generated)
 		if storeErr != nil {
 			a.logger.Warn("缩略图写入失败，保留原图", "request_id", requestID, "image_id", id, "error", storeErr)
 		} else {
@@ -210,7 +210,7 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 		a.logger.Warn("图片派生处理失败，保留原图", "request_id", requestID, "image_id", id, "error", processingErr)
 	}
 	for _, generated := range generatedVariants {
-		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, id, generated.Kind, img.CreatedAt, generated.Image)
+		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, generated.Kind, img.CreatedAt, generated.Image)
 		if storeErr != nil {
 			a.logger.Warn("图片派生版本写入失败，保留原图", "request_id", requestID, "image_id", id, "kind", generated.Kind, "error", storeErr)
 			continue
@@ -254,7 +254,7 @@ func (a *App) storeGeneratedVariant(
 	ctx context.Context,
 	backend storageBackend,
 	record StorageRecord,
-	imageID, kind, createdAt string,
+	siteURL, imageID, kind, createdAt string,
 	generated generatedImage,
 ) (*ImageVariant, error) {
 	putCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
@@ -265,7 +265,7 @@ func (a *App) storeGeneratedVariant(
 	}
 	return &ImageVariant{
 		ID: newUUIDv7(), ImageID: imageID, Kind: kind, ObjectKey: storedKey,
-		PublicURL: publicURL(record, storedKey), MIMEType: generated.MIMEType,
+		PublicURL: publicURL(record, storedKey, siteURL), MIMEType: generated.MIMEType,
 		Size: generated.Size, Width: generated.Width, Height: generated.Height, CreatedAt: createdAt,
 	}, nil
 }

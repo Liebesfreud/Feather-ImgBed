@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -55,6 +56,15 @@ func New(cfg Config, logger *slog.Logger) (*App, error) {
 		mux: http.NewServeMux(), limiter: newRateLimiter(), trustedProxies: trustedProxies,
 	}
 	application.backendFactory = application.defaultBackend
+	settings, err := loadSettings(context.Background(), db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := application.refreshProxyPublicURLs(context.Background(), db, settings.SiteURL); err != nil {
+		db.Close()
+		return nil, err
+	}
 	application.routes()
 	return application, nil
 }
