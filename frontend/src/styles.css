@@ -273,6 +273,9 @@ code { font-family: "JetBrains Mono", monospace }
 .preview-info p { margin-top: 3px; color: var(--muted); font-size: 11px }
 .tag-chips { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px }
 .tag-chips span { padding: 3px 7px; display: inline-flex; align-items: center; gap: 5px; border-radius: var(--radius); background: var(--raised); color: var(--neutral); font-size: 10px }
+.variant-select { width: min(280px,100%); margin-top: 10px; display: flex; align-items: center; gap: 9px }
+.variant-select>span { flex: none; color: var(--muted); font-size: 11px }
+.variant-select .ui-select-trigger { height: 34px; padding-inline: 9px; background: var(--raised); font-size: 11px }
 .preview-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px }.preview-actions .danger { margin-left: 8px }
 .batch-bar { position: fixed; z-index: 45; right: 24px; bottom: 24px; left: 24px; width: max-content; max-width: calc(100% - 48px); min-height: 58px; margin: auto; padding: 8px 10px 8px 18px; display: flex; align-items: center; gap: 5px; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb,var(--surface) 94%,transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px) }
 .batch-bar strong { flex: none; margin-right: 8px; font-size: 13px }

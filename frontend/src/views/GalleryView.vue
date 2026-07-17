@@ -5,7 +5,7 @@ import { useRoute, useRouter, type LocationQuery, type LocationQueryRaw } from '
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { api, deleteJSON, patchJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
-import type { Album, ImageItem, StorageRecord, Tag as TagItem } from '../types'
+import type { Album, ImageItem, ImageVariant, StorageRecord, Tag as TagItem } from '../types'
 import { formatImageLink, joinImageLinks, readCopyPreferences, type LinkFormat } from '../linkFormats'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
@@ -44,6 +44,8 @@ const tagManagerOpen = ref(false)
 const tagPickerOpen = ref(false)
 const tagPickerMode = ref<'single' | 'bulk'>('single')
 const previewTags = ref<TagItem[]>([])
+const previewDetail = ref<ImageItem | null>(null)
+const selectedVariant = ref('original')
 const tagsBusy = ref(false)
 const favoriteBusy = ref(new Set<string>())
 const albumPickerOpen = ref(false)
@@ -51,8 +53,17 @@ const albumBusy = ref(false)
 const syncingFromRoute = ref(false)
 let searchTimer = 0
 let requestSequence = 0
+let detailSequence = 0
 
 const preview = computed(() => images.value[previewIndex.value])
+const variants = computed(() => previewDetail.value?.variants || [])
+const selectedVariantItem = computed<ImageVariant | null>(() => variants.value.find((item) => item.id === selectedVariant.value) || null)
+const previewURL = computed(() => selectedVariantItem.value?.url || preview.value?.url || '')
+const previewLinkItem = computed(() => preview.value ? { ...preview.value, url: previewURL.value } : null)
+const variantOptions = computed(() => [
+  { label: '原图', value: 'original' },
+  ...variants.value.map((item) => ({ label: variantLabel(item.kind), value: item.id })),
+])
 const selectedImages = computed(() => images.value.filter((item) => selected.value.has(item.id)))
 const hasFilters = computed(() => Boolean(search.value || storage.value || from.value || to.value || favoriteOnly.value || tagFilter.value || order.value !== 'desc'))
 const storageFilterValue = computed({ get: () => storage.value || '__all__', set: (value: string) => { storage.value = value === '__all__' ? '' : value } })
@@ -147,17 +158,23 @@ function clearFilters() { void router.replace({ query: { order: 'desc' } }) }
 function toggleSelected(id: string) { const next = new Set(selected.value); next.has(id) ? next.delete(id) : next.add(id); selected.value = next }
 function selectLoaded() { selected.value = new Set(images.value.map((item) => item.id)) }
 function clearSelection() { selected.value = new Set() }
-function openPreview(index: number) { if (selectMode.value) { toggleSelected(images.value[index].id); return }; previewIndex.value = index; zoom.value = 1; void loadPreviewTags() }
-function closePreview() { deleteConfirmOpen.value = false; previewIndex.value = -1 }
-function move(delta: number) { if (!images.value.length) return; previewIndex.value = (previewIndex.value + delta + images.value.length) % images.value.length; zoom.value = 1; void loadPreviewTags() }
+function openPreview(index: number) { if (selectMode.value) { toggleSelected(images.value[index].id); return }; previewIndex.value = index; zoom.value = 1; void loadPreviewData() }
+function closePreview() { deleteConfirmOpen.value = false; previewIndex.value = -1; previewDetail.value = null; previewTags.value = []; selectedVariant.value = 'original' }
+function move(delta: number) { if (!images.value.length) return; previewIndex.value = (previewIndex.value + delta + images.value.length) % images.value.length; zoom.value = 1; void loadPreviewData() }
 function formatSize(bytes: number) { return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.max(1, bytes / 1024).toFixed(0)} KB` }
 function formatDate(value: string) { return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
+function variantLabel(kind: string) {
+  return ({ thumbnail: '缩略图', webp: 'WebP', watermarked: '水印版本', preview: '预览图', avif: 'AVIF', jpeg_preview: 'JPEG 预览' } as Record<string, string>)[kind] || kind
+}
 async function writeClipboard(value: string, successMessage: string) {
   try { await navigator.clipboard.writeText(value); toast(successMessage) }
   catch { toast('浏览器拒绝了剪贴板权限，请在地址栏中允许后重试', 'error') }
 }
 async function copy(item: ImageItem, kind: LinkFormat) {
   await writeClipboard(formatImageLink(item, kind), '已复制到剪贴板')
+}
+async function copyPreview(kind: LinkFormat) {
+  if (previewLinkItem.value) await copy(previewLinkItem.value, kind)
 }
 async function copySelected(kind: LinkFormat) {
   if (!selectedImages.value.length) { toast('请先选择图片', 'error'); return }
@@ -213,6 +230,21 @@ async function loadPreviewTags() {
   if (!item) return
   try { previewTags.value = await api<TagItem[]>(`/images/${item.id}/tags`) }
   catch { /* 标签不是预览图片的阻断项。 */ }
+}
+async function loadPreviewData() {
+  const item = preview.value
+  const sequence = ++detailSequence
+  previewTags.value = []
+  previewDetail.value = null
+  selectedVariant.value = 'original'
+  if (!item) return
+  const [detailResult, tagsResult] = await Promise.allSettled([
+    api<ImageItem>(`/images/${item.id}`),
+    api<TagItem[]>(`/images/${item.id}/tags`),
+  ])
+  if (sequence !== detailSequence || preview.value?.id !== item.id) return
+  if (detailResult.status === 'fulfilled') previewDetail.value = detailResult.value
+  if (tagsResult.status === 'fulfilled') previewTags.value = tagsResult.value
 }
 function openSingleTagPicker() { tagPickerMode.value = 'single'; tagPickerOpen.value = true }
 function openBulkTagPicker() { tagPickerMode.value = 'bulk'; tagPickerOpen.value = true }
@@ -326,12 +358,12 @@ onBeforeUnmount(() => {
         <DialogContent v-if="preview" class="lightbox-panel">
           <UiTooltip text="关闭预览" side="left"><DialogClose as-child><button class="lightbox-close" aria-label="关闭预览"><X :size="24"/></button></DialogClose></UiTooltip>
           <div class="preview-stage">
-            <img :src="preview.url" :alt="preview.original_name" :style="{ transform: `scale(${zoom})` }">
+            <img :src="previewURL" :alt="preview.original_name" :style="{ transform: `scale(${zoom})` }">
             <UiTooltip text="上一张" side="right"><button class="preview-nav prev" aria-label="上一张" @click="move(-1)"><ChevronLeft :size="26"/></button></UiTooltip><UiTooltip text="下一张" side="left"><button class="preview-nav next" aria-label="下一张" @click="move(1)"><ChevronRight :size="26"/></button></UiTooltip>
             <div class="zoom-controls"><UiTooltip text="缩小" side="top"><button aria-label="缩小" @click="zoom = Math.max(.5, zoom - .25)"><ZoomOut :size="18"/></button></UiTooltip><span>{{ Math.round(zoom * 100) }}%</span><UiTooltip text="放大" side="top"><button aria-label="放大" @click="zoom = Math.min(2.5, zoom + .25)"><ZoomIn :size="18"/></button></UiTooltip></div>
           </div>
-          <div class="preview-info"><div><DialogTitle as-child><h2>{{ preview.original_name }}</h2></DialogTitle><DialogDescription as-child><p>{{ storages.find(s => s.id === preview.storage_id)?.name || preview.storage_type }} · {{ preview.width }} × {{ preview.height }} · {{ formatSize(preview.size) }}</p></DialogDescription><p>上传于 {{ formatDate(preview.created_at) }}</p><div v-if="previewTags.length" class="tag-chips"><span v-for="item in previewTags" :key="item.id"><i :style="{ background: item.color }"></i>{{ item.name }}</span></div></div>
-            <div class="preview-actions"><button :class="{ favorite: preview.favorite }" @click="toggleFavorite(preview)"><Heart :size="17" :fill="preview.favorite ? 'currentColor' : 'none'"/>{{ preview.favorite ? '取消收藏' : '收藏' }}</button><button @click="openSingleTagPicker"><Tags :size="17"/>标签</button><button @click="copy(preview, 'url')"><Link2 :size="17"/>复制链接</button><button @click="copy(preview, 'markdown')"><FileCode2 :size="17"/>Markdown</button><button @click="copy(preview, 'html')"><Code2 :size="17"/>HTML</button><button @click="copy(preview, 'bbcode')"><Braces :size="17"/>BBCode</button><button class="danger" :disabled="deleting" @click="deleteConfirmOpen = true"><Trash2 :size="17"/>{{ deleting ? '处理中…' : '移入回收站' }}</button></div>
+          <div class="preview-info"><div><DialogTitle as-child><h2>{{ preview.original_name }}</h2></DialogTitle><DialogDescription as-child><p>{{ storages.find(s => s.id === preview.storage_id)?.name || preview.storage_type }} · {{ selectedVariantItem?.width || preview.width }} × {{ selectedVariantItem?.height || preview.height }} · {{ formatSize(selectedVariantItem?.size || preview.size) }}</p></DialogDescription><p>上传于 {{ formatDate(preview.created_at) }}</p><div v-if="variants.length" class="variant-select"><span>链接版本</span><UiSelect v-model="selectedVariant" :options="variantOptions" aria-label="选择图片版本"/></div><div v-if="previewTags.length" class="tag-chips"><span v-for="item in previewTags" :key="item.id"><i :style="{ background: item.color }"></i>{{ item.name }}</span></div></div>
+            <div class="preview-actions"><button :class="{ favorite: preview.favorite }" @click="toggleFavorite(preview)"><Heart :size="17" :fill="preview.favorite ? 'currentColor' : 'none'"/>{{ preview.favorite ? '取消收藏' : '收藏' }}</button><button @click="openSingleTagPicker"><Tags :size="17"/>标签</button><button @click="copyPreview('url')"><Link2 :size="17"/>复制链接</button><button @click="copyPreview('markdown')"><FileCode2 :size="17"/>Markdown</button><button @click="copyPreview('html')"><Code2 :size="17"/>HTML</button><button @click="copyPreview('bbcode')"><Braces :size="17"/>BBCode</button><button class="danger" :disabled="deleting" @click="deleteConfirmOpen = true"><Trash2 :size="17"/>{{ deleting ? '处理中…' : '移入回收站' }}</button></div>
           </div>
         </DialogContent>
       </DialogPortal>
