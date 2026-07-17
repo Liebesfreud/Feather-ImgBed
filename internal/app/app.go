@@ -81,6 +81,11 @@ func (a *App) routes() {
 	a.mux.HandleFunc("GET /api/v1/random", a.randomImage)
 	a.mux.Handle("GET /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.getImage)))
 	a.mux.Handle("DELETE /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.deleteImage)))
+	a.mux.Handle("POST /api/v1/images/bulk", a.requireAuth(http.HandlerFunc(a.bulkImages)))
+	a.mux.Handle("GET /api/v1/trash", a.requireAuth(http.HandlerFunc(a.listTrash)))
+	a.mux.Handle("POST /api/v1/trash/{id}/restore", a.requireAuth(http.HandlerFunc(a.restoreImage)))
+	a.mux.Handle("DELETE /api/v1/trash/{id}", a.requireAuth(http.HandlerFunc(a.purgeImage)))
+	a.mux.Handle("POST /api/v1/trash/purge", a.requireAuth(http.HandlerFunc(a.purgeTrash)))
 
 	a.mux.Handle("GET /api/v1/storages", a.requireAuth(http.HandlerFunc(a.listStorages)))
 	a.mux.Handle("POST /api/v1/storages/test", a.requireAuth(http.HandlerFunc(a.testStorage)))
@@ -91,6 +96,7 @@ func (a *App) routes() {
 	a.mux.Handle("GET /api/v1/system", a.requireAuth(http.HandlerFunc(a.systemInfo)))
 
 	a.registerOrganizationRoutes()
+	a.registerImportRoutes()
 
 	a.mux.HandleFunc("GET /files/", a.serveLocalFile)
 	a.mux.HandleFunc("GET /", a.serveFrontend)
