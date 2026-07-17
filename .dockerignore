@@ -5,3 +5,6 @@ data
 *.log
 coverage.out
 feather-imgbed
+frontend/node_modules
+frontend/test-results
+frontend/playwright-report
