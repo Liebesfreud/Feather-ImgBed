@@ -14,6 +14,7 @@ import UiTooltip from '../components/ui/UiTooltip.vue'
 import TagManagerDialog from '../components/TagManagerDialog.vue'
 import TagPickerDialog from '../components/TagPickerDialog.vue'
 import AlbumPickerDialog from '../components/AlbumPickerDialog.vue'
+import ImageManagementNav from '../components/ImageManagementNav.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -308,7 +309,8 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="content-stack gallery-view">
-    <header class="page-heading gallery-heading"><div><h1>图片管理</h1><p>查找、预览并管理所有已上传的图片。</p></div><span v-if="images.length">{{ images.length }} 张图片</span></header>
+    <ImageManagementNav />
+    <header class="page-heading gallery-heading"><h1>图片管理</h1><span v-if="images.length">{{ images.length }} 张图片</span></header>
     <div class="gallery-toolbar">
       <label class="search-control"><Search :size="18"/><input v-model.trim="search" placeholder="搜索图片名称" aria-label="搜索图片名称"></label>
       <div class="gallery-select"><Database :size="17"/><UiSelect v-model="storageFilterValue" :options="storageOptions" aria-label="按存储筛选" /></div>

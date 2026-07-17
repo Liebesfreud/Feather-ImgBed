@@ -109,6 +109,11 @@ code { font-family: "JetBrains Mono", monospace }
 .page-heading, .settings-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px }
 .page-heading h1, .settings-heading h1 { font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -.02em }
 .page-heading p, .settings-heading p { margin-top: 7px; color: var(--muted); line-height: 22px }
+.management-nav { width: max-content; max-width: 100%; display: flex; align-items: center; gap: 4px; padding: 4px; overflow-x: auto; border-radius: var(--radius); background: var(--raised) }
+.management-nav a { height: 38px; display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 0 14px; border-radius: var(--radius); color: var(--muted); font-size: 12px; font-weight: 700; transition: color .18s, background .18s, box-shadow .18s }
+.management-nav a:hover { color: var(--text) }
+.management-nav a.active { color: var(--text); background: var(--surface); box-shadow: var(--shadow-sm) }
+.management-nav a.active svg { color: var(--primary) }
 
 .primary-button, .soft-button, .load-more { min-height: 40px; padding: 0 24px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .04em; transition: background .18s, color .18s, transform .18s, border-color .18s }
 .primary-button { border: 0; color: var(--on-primary); background: var(--primary) }
@@ -425,7 +430,7 @@ code { font-family: "JetBrains Mono", monospace }
   .brand { height: 44px }
   .brand>span:last-child { display: inline; font-size: 17px }
   .brand-mark { width: 32px; height: 32px }
-  .main-nav { position: fixed; z-index: 60; inset: auto 10px calc(10px + env(safe-area-inset-bottom)); width: auto; height: 64px; display: grid; grid-template-columns: repeat(5,1fr); justify-self: stretch; gap: 2px; padding: 4px 6px; border: 1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius: 16px; background: var(--topbar); box-shadow: 0 10px 34px rgba(17,24,19,.16); -webkit-backdrop-filter: blur(18px) saturate(145%); backdrop-filter: blur(18px) saturate(145%) }
+  .main-nav { position: fixed; z-index: 60; inset: auto 10px calc(10px + env(safe-area-inset-bottom)); width: auto; height: 64px; display: grid; grid-template-columns: repeat(3,1fr); justify-self: stretch; gap: 2px; padding: 4px 6px; border: 1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius: 16px; background: var(--topbar); box-shadow: 0 10px 34px rgba(17,24,19,.16); -webkit-backdrop-filter: blur(18px) saturate(145%); backdrop-filter: blur(18px) saturate(145%) }
   .dark .main-nav { box-shadow: 0 14px 36px rgba(0,0,0,.4) }
   .main-nav a { width: auto; height: 56px; flex-direction: column; justify-content: center; gap: 3px; padding: 0; border-radius: var(--radius); font-size: 11px; font-weight: 700 }
   .main-nav a span { display: inline }
@@ -436,6 +441,8 @@ code { font-family: "JetBrains Mono", monospace }
   .auth-theme-button { top: 14px; right: 14px }
   .page { width: calc(100% - 32px); padding: 28px 0 40px }
   .content-stack { gap: 24px }
+  .management-nav { width: 100% }
+  .management-nav a { flex: 1; justify-content: center; padding-inline: 10px }
   .page-heading,.settings-heading { min-height: 0; align-items: stretch; flex-direction: column; gap: 16px }
   .page-heading h1,.settings-heading h1 { font-size: 27px; line-height: 34px }
   .page-heading p,.settings-heading p { font-size: 13px }

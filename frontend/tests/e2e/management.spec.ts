@@ -111,3 +111,28 @@ test('回收站支持批量恢复和清空确认', async ({ page }) => {
   await expect(page.getByText('回收站是空的')).toBeVisible()
   expect(api.calls.find((call) => call.path === '/trash/purge')?.body).toEqual({ all: true })
 })
+
+test('图片管理统一收纳图库、相册与回收站', async ({ page }) => {
+  await mockManagementAPI(page)
+  await page.goto('/gallery')
+
+  const mainNavigation = page.getByRole('navigation', { name: '主导航' })
+  await expect(mainNavigation.getByRole('link')).toHaveCount(3)
+  await expect(mainNavigation.getByRole('link', { name: '图片管理' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByText('查找、预览并管理所有已上传的图片。')).toHaveCount(0)
+
+  const managementNavigation = page.getByRole('navigation', { name: '图片管理分类' })
+  await managementNavigation.getByRole('link', { name: '相册' }).click()
+  await expect(page).toHaveURL(/\/albums$/)
+  await expect(page.getByRole('heading', { name: '相册', exact: true })).toBeVisible()
+  await expect(mainNavigation.getByRole('link', { name: '图片管理' })).toHaveAttribute('aria-current', 'page')
+
+  await managementNavigation.getByRole('link', { name: '回收站' }).click()
+  await expect(page).toHaveURL(/\/trash$/)
+  await expect(page.getByRole('heading', { name: '回收站', exact: true })).toBeVisible()
+  await expect(mainNavigation.getByRole('link', { name: '图片管理' })).toHaveAttribute('aria-current', 'page')
+
+  await managementNavigation.getByRole('link', { name: '全部图片' }).click()
+  await expect(page).toHaveURL(url => url.pathname === '/gallery')
+  await expect(page.getByRole('heading', { name: '图片管理' })).toBeVisible()
+})

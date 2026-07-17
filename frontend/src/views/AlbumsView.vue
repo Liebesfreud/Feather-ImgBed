@@ -7,6 +7,7 @@ import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import type { Album } from '../types'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
+import ImageManagementNav from '../components/ImageManagementNav.vue'
 
 const router = useRouter()
 const albums = ref<Album[]>([])
@@ -63,7 +64,8 @@ onMounted(() => void load())
 
 <template>
   <section class="content-stack albums-view">
-    <header class="page-heading"><div><h1>相册</h1><p>按主题整理图片，相册删除后不会影响图库中的原图。</p></div><button class="primary-button" @click="openForm()"><Plus :size="18"/>新建相册</button></header>
+    <ImageManagementNav />
+    <header class="page-heading"><h1>相册</h1><button class="primary-button" @click="openForm()"><Plus :size="18"/>新建相册</button></header>
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/>正在整理相册…</div>
     <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>相册暂时无法加载</h2><button class="soft-button" @click="load"><RefreshCw :size="17"/>重新加载</button></div>
     <div v-else-if="!albums.length" class="gallery-state empty-state"><div class="empty-art"><FolderHeart :size="44"/></div><h2>还没有相册</h2><p>创建一个相册，再从图库批量加入图片。</p><button class="primary-button" @click="openForm()"><Plus :size="17"/>创建第一个相册</button></div>

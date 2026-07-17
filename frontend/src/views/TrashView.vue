@@ -6,6 +6,7 @@ import { toast } from '../toast'
 import type { ImageItem } from '../types'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
+import ImageManagementNav from '../components/ImageManagementNav.vue'
 
 type DangerAction =
   | { kind: 'single'; item: ImageItem }
@@ -102,8 +103,9 @@ onMounted(() => void load(true))
 
 <template>
   <section class="content-stack trash-view">
+    <ImageManagementNav />
     <header class="page-heading gallery-heading">
-      <div><h1>回收站</h1><p>恢复误删图片，或永久清理原图与缩略图。</p></div>
+      <h1>回收站</h1>
       <div class="trash-heading-actions">
         <button v-if="images.length" class="soft-button danger" @click="requestDanger({ kind: 'all' })"><Trash2 :size="17"/>清空回收站</button>
         <button class="soft-button manage-button" :class="{ active: selectMode }" @click="selectMode = !selectMode; clearSelection()"><CheckSquare :size="17"/>{{ selectMode ? '完成管理' : '批量管理' }}</button>

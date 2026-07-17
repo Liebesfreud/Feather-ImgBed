@@ -8,6 +8,7 @@ import { toast } from '../toast'
 import { formatImageLink, readCopyPreferences } from '../linkFormats'
 import type { Album, ImageItem } from '../types'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
+import ImageManagementNav from '../components/ImageManagementNav.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -95,6 +96,7 @@ onMounted(() => void load())
 
 <template>
   <section class="content-stack album-detail-view">
+    <ImageManagementNav />
     <button class="back-link" @click="router.push('/albums')"><ArrowLeft :size="17"/>返回相册</button>
     <header v-if="album" class="page-heading album-detail-heading"><div><h1>{{ album.name }}</h1><p>{{ album.description || '这个相册还没有描述。' }} · {{ images.length }} 张图片</p></div><div><button class="soft-button" @click="openEdit"><Pencil :size="17"/>编辑</button><button class="soft-button danger" @click="requestDanger({ kind: 'album' })"><Trash2 :size="17"/>删除相册</button></div></header>
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/>正在打开相册…</div>
