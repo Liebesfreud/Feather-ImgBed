@@ -72,6 +72,7 @@ test('图库恢复 query、复制 Markdown 并批量移入回收站', async ({ p
 
   await expect(page.getByRole('heading', { name: '图片管理' })).toBeVisible()
   await expect(page.getByLabel('搜索图片名称')).toHaveValue('cat')
+  await page.getByRole('button', { name: '筛选' }).click()
   await expect(page.getByLabel('起始日期')).toHaveValue('2026-07-01')
   await expect(page.getByLabel('结束日期')).toHaveValue('2026-07-17')
   await expect(page.getByRole('img', { name: 'cat.jpg' })).toHaveAttribute('src', pixel)
@@ -84,7 +85,8 @@ test('图库恢复 query、复制 Markdown 并批量移入回收站', async ({ p
 
   await page.getByRole('button', { name: '批量管理' }).click()
   await page.getByRole('checkbox', { name: '选择 cat.jpg' }).click()
-  await page.getByRole('button', { name: 'Markdown', exact: true }).click()
+  await page.getByRole('button', { name: '复制链接' }).click()
+  await page.getByRole('menuitem', { name: 'Markdown' }).click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('![cat.jpg](https://img.example.com/cat.jpg)')
 
   await page.getByRole('button', { name: '移入回收站', exact: true }).click()

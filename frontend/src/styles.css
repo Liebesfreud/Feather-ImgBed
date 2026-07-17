@@ -232,14 +232,20 @@ code { font-family: "JetBrains Mono", monospace }
 .search-control { flex: 1; max-width: 390px; border-radius: var(--radius)!important; padding: 0 18px!important }
 .date-control { min-width: 142px!important }
 .sort-select { min-width: 132px!important }
+.toolbar-chip { height: 44px; flex: none; background: var(--raised) }
+.toolbar-chip .filter-count { min-width: 19px; height: 19px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: 10px }
+.toolbar-chip .rotated { transform: rotate(180deg) }
 .manage-button { margin-left: auto }
 .manage-button.active { border-color: var(--text); background: var(--text); color: var(--bg) }
-.organization-toolbar { display: flex; align-items: center; gap: 8px; margin-top: -22px }
 .filter-chip { height: 36px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--neutral); font-size: 12px; font-weight: 700 }
 .filter-chip:hover, .filter-chip.active { border-color: var(--text); color: var(--text) }
 .filter-chip.active { color: var(--primary) }
-.organization-toolbar .tag-filter { width: 170px; height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 7px; border-radius: var(--radius); background: var(--surface); color: var(--muted) }
-.organization-toolbar .tag-filter .ui-select-trigger { height: 36px }
+.advanced-filters { margin-top: -20px; padding: 14px; display: grid; grid-template-columns: minmax(160px,1fr) repeat(2,minmax(142px,.8fr)) minmax(132px,.75fr) minmax(160px,1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface) }
+.advanced-filters label, .advanced-filters .gallery-select { height: 42px; min-width: 0; padding: 0 11px; display: flex; align-items: center; gap: 8px; border-radius: var(--radius); background: var(--raised); color: var(--muted); font-size: 12px }
+.advanced-filters input { width: 100%; min-width: 0; border: 0; background: transparent }
+.advanced-filters .ui-select-trigger { height: 42px }
+.filter-clear { height: 42px; padding: 0 12px; border: 0; border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 12px; font-weight: 700 }
+.filter-clear:hover { color: var(--text); background: var(--raised) }
 .gallery-state { min-height: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); text-align: center }
 .gallery-state h2 { color: var(--text); font-size: 22px }
 .empty-art { width: 82px; height: 82px; display: grid; place-items: center; margin-bottom: 5px; border-radius: var(--radius); color: var(--primary); background: var(--surface) }
@@ -258,8 +264,7 @@ code { font-family: "JetBrains Mono", monospace }
 .image-caption>div { min-width: 0; display: flex; flex-direction: column; gap: 4px }
 .image-caption strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px }
 .image-caption span { color: var(--muted); font-size: 11px }
-.image-caption>div:last-child { align-items: flex-end }
-.image-caption button { height: 20px; padding: 0; border: 0; background: transparent; color: var(--muted) }
+.image-caption>span { flex: none; align-self: flex-end }
 .load-more { align-self: center; min-width: 150px; background: transparent }
 .gallery-end { text-align: center; color: var(--subtle); font-size: 11px }
 .lightbox-overlay { position: fixed; z-index: 100; inset: 0; background: rgba(0,0,0,.84); backdrop-filter: blur(10px) }
@@ -288,6 +293,11 @@ code { font-family: "JetBrains Mono", monospace }
 .batch-bar button:hover { color: var(--text); background: var(--raised) }
 .batch-spacer { width: 8px; flex: 1 }
 .batch-divider { width: 1px; height: 26px; flex: none; margin: 0 4px; background: var(--line) }
+.gallery-menu { z-index: 300; min-width: 170px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-md) }
+.gallery-menu-item { height: 38px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border-radius: var(--radius); color: var(--neutral); font-size: 12px; font-weight: 700; outline: none; cursor: pointer }
+.gallery-menu-item[data-highlighted] { color: var(--text); background: var(--raised) }
+.gallery-menu-item[data-disabled] { opacity: .45; pointer-events: none }
+.gallery-menu[data-state=open] { animation: menu-in .16s ease-out }
 
 /* Trash */
 .trash-heading-actions { display: flex; align-items: center; gap: 8px }
@@ -418,6 +428,7 @@ code { font-family: "JetBrains Mono", monospace }
   .page { width: min(100% - 32px,760px); padding: 34px 0 72px }
   .queue-row { grid-template-columns: 1fr auto; gap: 12px }.queue-row>img,.file-meta,.upload-status { grid-column: 1 }.storage-tag { display: block; grid-row: 1; grid-column: 2 }.row-actions { grid-column: 1/3 }
   .gallery-toolbar { flex-wrap: wrap }.gallery-toolbar label { flex: 1 }.manage-button { margin-left: 0 }.image-grid { columns: 3 180px }
+  .advanced-filters { grid-template-columns: repeat(2,minmax(0,1fr)) }
   .trash-grid { columns: 3 200px }
   .album-grid { grid-template-columns: repeat(2,minmax(0,1fr)) }
   .album-image-grid { columns: 3 190px }
@@ -470,8 +481,9 @@ code { font-family: "JetBrains Mono", monospace }
   .gallery-toolbar label,.gallery-toolbar .gallery-select,.search-control { min-width: 0!important; max-width: none }
   .search-control,.manage-button { grid-column: 1/3 }
   .manage-button { width: 100% }
-  .organization-toolbar { margin-top: -12px; flex-wrap: wrap }
-  .organization-toolbar .tag-filter { flex: 1 }
+  .toolbar-chip { width: 100%; justify-content: center }
+  .gallery-toolbar .toolbar-chip:nth-of-type(3) { grid-column: 1/3 }
+  .advanced-filters { margin-top: -12px; grid-template-columns: 1fr }
   .image-grid { columns: 2 140px; column-gap: 10px }
   .image-card { margin-bottom: 10px }
   .image-caption { min-height: 62px; padding: 10px }

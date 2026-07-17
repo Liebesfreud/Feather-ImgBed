@@ -37,7 +37,8 @@ test('图库可收藏、筛选收藏并批量添加标签', async ({ page }) => 
 
   await page.getByRole('button', { name: '批量管理' }).click()
   await page.getByRole('checkbox', { name: '选择 cat.jpg' }).click()
-  await page.getByRole('button', { name: '标签', exact: true }).click()
+  await page.getByRole('button', { name: '整理' }).click()
+  await page.getByRole('menuitem', { name: '标签' }).click()
   await page.getByRole('checkbox', { name: '猫咪' }).click()
   await page.getByRole('button', { name: '保存标签' }).click()
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Search, Database, CalendarDays, ArrowDownUp, CheckSquare, MoreHorizontal, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw, ListChecks, Eraser, Braces, Heart, Tags, Tag, FolderPlus } from '@lucide/vue'
+import { Search, CalendarDays, CheckSquare, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ChevronDown, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw, Braces, Heart, Tags, Tag, FolderPlus, SlidersHorizontal } from '@lucide/vue'
 import { useRoute, useRouter, type LocationQuery, type LocationQueryRaw } from 'vue-router'
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
 import { api, deleteJSON, patchJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import type { Album, ImageItem, ImageVariant, StorageRecord, Tag as TagItem } from '../types'
@@ -44,6 +44,7 @@ const bulkWorking = ref(false)
 const tagManagerOpen = ref(false)
 const tagPickerOpen = ref(false)
 const tagPickerMode = ref<'single' | 'bulk'>('single')
+const filterOpen = ref(false)
 const previewTags = ref<TagItem[]>([])
 const previewDetail = ref<ImageItem | null>(null)
 const selectedVariant = ref('original')
@@ -67,6 +68,7 @@ const variantOptions = computed(() => [
 ])
 const selectedImages = computed(() => images.value.filter((item) => selected.value.has(item.id)))
 const hasFilters = computed(() => Boolean(search.value || storage.value || from.value || to.value || favoriteOnly.value || tagFilter.value || order.value !== 'desc'))
+const advancedFilterCount = computed(() => [storage.value, from.value, to.value, tagFilter.value, order.value !== 'desc'].filter(Boolean).length)
 const storageFilterValue = computed({ get: () => storage.value || '__all__', set: (value: string) => { storage.value = value === '__all__' ? '' : value } })
 const storageOptions = computed(() => [{ label: '全部存储', value: '__all__' }, ...storages.value.map((item) => ({ label: item.name, value: item.id }))])
 const orderOptions = [
@@ -156,6 +158,13 @@ async function applyRouteAndLoad() {
   await load(true)
 }
 function clearFilters() { void router.replace({ query: { order: 'desc' } }) }
+function clearAdvancedFilters() {
+  storage.value = ''
+  from.value = ''
+  to.value = ''
+  tagFilter.value = ''
+  order.value = 'desc'
+}
 function toggleSelected(id: string) { const next = new Set(selected.value); next.has(id) ? next.delete(id) : next.add(id); selected.value = next }
 function selectLoaded() { selected.value = new Set(images.value.map((item) => item.id)) }
 function clearSelection() { selected.value = new Set() }
@@ -313,16 +322,18 @@ onBeforeUnmount(() => {
     <header class="page-heading gallery-heading"><h1>图片管理</h1><span v-if="images.length">{{ images.length }} 张图片</span></header>
     <div class="gallery-toolbar">
       <label class="search-control"><Search :size="18"/><input v-model.trim="search" placeholder="搜索图片名称" aria-label="搜索图片名称"></label>
-      <div class="gallery-select"><Database :size="17"/><UiSelect v-model="storageFilterValue" :options="storageOptions" aria-label="按存储筛选" /></div>
-      <label class="date-control"><CalendarDays :size="17"/><input v-model="from" type="date" aria-label="起始日期" title="起始日期"></label>
-      <label class="date-control"><CalendarDays :size="17"/><input v-model="to" type="date" aria-label="结束日期" title="结束日期"></label>
-      <div class="gallery-select sort-select"><ArrowDownUp :size="17"/><UiSelect v-model="order" :options="orderOptions" aria-label="上传时间排序" /></div>
+      <button class="filter-chip toolbar-chip" :class="{ active: favoriteOnly }" @click="favoriteOnly = !favoriteOnly"><Heart :size="16" :fill="favoriteOnly ? 'currentColor' : 'none'"/>仅看收藏</button>
+      <button class="filter-chip toolbar-chip" :class="{ active: filterOpen || advancedFilterCount }" :aria-expanded="filterOpen" @click="filterOpen = !filterOpen"><SlidersHorizontal :size="16"/>筛选<span v-if="advancedFilterCount" class="filter-count">{{ advancedFilterCount }}</span><ChevronDown :size="15" :class="{ rotated: filterOpen }"/></button>
+      <button class="filter-chip toolbar-chip" @click="tagManagerOpen = true"><Tags :size="16"/>标签管理</button>
       <button class="soft-button manage-button" :class="{ active: selectMode }" @click="selectMode = !selectMode; clearSelection()"><CheckSquare :size="17"/>{{ selectMode ? '完成管理' : '批量管理' }}</button>
     </div>
-    <div class="organization-toolbar">
-      <button class="filter-chip" :class="{ active: favoriteOnly }" @click="favoriteOnly = !favoriteOnly"><Heart :size="16" :fill="favoriteOnly ? 'currentColor' : 'none'"/>仅看收藏</button>
+    <div v-if="filterOpen" class="advanced-filters">
+      <div class="gallery-select"><UiSelect v-model="storageFilterValue" :options="storageOptions" aria-label="按存储筛选" /></div>
+      <label class="date-control"><CalendarDays :size="17"/><input v-model="from" type="date" aria-label="起始日期" title="起始日期"></label>
+      <label class="date-control"><CalendarDays :size="17"/><input v-model="to" type="date" aria-label="结束日期" title="结束日期"></label>
+      <div class="gallery-select sort-select"><UiSelect v-model="order" :options="orderOptions" aria-label="上传时间排序" /></div>
       <div class="gallery-select tag-filter"><Tag :size="16"/><UiSelect v-model="tagFilterValue" :options="tagOptions" aria-label="按标签筛选"/></div>
-      <button class="filter-chip" @click="tagManagerOpen = true"><Tags :size="16"/>标签管理</button>
+      <button v-if="advancedFilterCount" class="filter-clear" @click="clearAdvancedFilters">清除筛选</button>
     </div>
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/><p>正在整理图库…</p></div>
     <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>图库暂时无法加载</h2><p>筛选条件已为你保留，请稍后重试。</p><button class="soft-button" @click="load(true)"><RefreshCw :size="17"/>重新加载</button></div>
@@ -330,7 +341,7 @@ onBeforeUnmount(() => {
     <div v-else class="image-grid">
       <article v-for="(item, index) in images" :key="item.id" class="image-card" :class="{ selected: selected.has(item.id) }" @click="openPreview(index)">
         <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" loading="lazy"><UiCheckbox v-if="selectMode" class="select-check" :model-value="selected.has(item.id)" :aria-label="`选择 ${item.original_name}`" @click.stop @update:model-value="toggleSelected(item.id)" /><button v-else class="favorite-card-button" :class="{ active: item.favorite }" :disabled="favoriteBusy.has(item.id)" :aria-label="item.favorite ? `取消收藏 ${item.original_name}` : `收藏 ${item.original_name}`" @click.stop="toggleFavorite(item)"><Heart :size="17" :fill="item.favorite ? 'currentColor' : 'none'"/></button></div>
-        <div class="image-caption"><div><strong :title="item.original_name">{{ item.original_name }}</strong><span>{{ formatDate(item.created_at) }}</span></div><div><UiTooltip text="预览图片"><button aria-label="预览图片" @click.stop="openPreview(index)"><MoreHorizontal :size="18"/></button></UiTooltip><span>{{ formatSize(item.size) }}</span></div></div>
+        <div class="image-caption"><div><strong :title="item.original_name">{{ item.original_name }}</strong><span>{{ formatDate(item.created_at) }}</span></div><span>{{ formatSize(item.size) }}</span></div>
       </article>
     </div>
     <button v-if="cursor && !loading" class="load-more" :disabled="loadingMore" @click="load(false)"><LoaderCircle v-if="loadingMore" class="spin" :size="17"/>{{ loadingMore ? '正在加载…' : '加载更多' }}</button>
@@ -339,18 +350,27 @@ onBeforeUnmount(() => {
     <aside v-if="selectMode" class="batch-bar" aria-label="批量操作栏">
       <strong>已选择 {{ selected.size }} 张</strong>
       <span class="batch-spacer"></span>
-      <button @click="selectLoaded"><ListChecks :size="16"/>选择已加载</button>
-      <button :disabled="!selected.size" @click="clearSelection"><Eraser :size="16"/>清空</button>
+      <button @click="selectLoaded">全选已加载</button>
+      <button :disabled="!selected.size" @click="clearSelection">清空</button>
       <span class="batch-divider"></span>
-      <button :disabled="!selected.size" @click="copySelected('url')"><Link2 :size="16"/>URL</button>
-      <button :disabled="!selected.size" @click="copySelected('markdown')"><FileCode2 :size="16"/>Markdown</button>
-      <button :disabled="!selected.size" @click="copySelected('html')"><Code2 :size="16"/>HTML</button>
-      <button :disabled="!selected.size" @click="copySelected('bbcode')"><Braces :size="16"/>BBCode</button>
-      <span class="batch-divider"></span>
-      <button :disabled="!selected.size || bulkWorking" @click="setSelectedFavorite(true)"><Heart :size="16"/>收藏</button>
-      <button :disabled="!selected.size || bulkWorking" @click="setSelectedFavorite(false)"><Heart :size="16"/>取消收藏</button>
-      <button :disabled="!selected.size || tagsBusy" @click="openBulkTagPicker"><Tags :size="16"/>标签</button>
-      <button :disabled="!selected.size || albumBusy" @click="albumPickerOpen = true"><FolderPlus :size="16"/>加入相册</button>
+      <DropdownMenuRoot>
+        <DropdownMenuTrigger as-child><button :disabled="!selected.size"><Link2 :size="16"/>复制链接<ChevronDown :size="14"/></button></DropdownMenuTrigger>
+        <DropdownMenuPortal><DropdownMenuContent class="gallery-menu" :side-offset="8" align="end">
+          <DropdownMenuItem class="gallery-menu-item" @select="copySelected('url')"><Link2 :size="16"/>URL</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" @select="copySelected('markdown')"><FileCode2 :size="16"/>Markdown</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" @select="copySelected('html')"><Code2 :size="16"/>HTML</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" @select="copySelected('bbcode')"><Braces :size="16"/>BBCode</DropdownMenuItem>
+        </DropdownMenuContent></DropdownMenuPortal>
+      </DropdownMenuRoot>
+      <DropdownMenuRoot>
+        <DropdownMenuTrigger as-child><button :disabled="!selected.size"><Tags :size="16"/>整理<ChevronDown :size="14"/></button></DropdownMenuTrigger>
+        <DropdownMenuPortal><DropdownMenuContent class="gallery-menu" :side-offset="8" align="end">
+          <DropdownMenuItem class="gallery-menu-item" :disabled="bulkWorking" @select="setSelectedFavorite(true)"><Heart :size="16"/>收藏</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" :disabled="bulkWorking" @select="setSelectedFavorite(false)"><Heart :size="16"/>取消收藏</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" :disabled="tagsBusy" @select="openBulkTagPicker"><Tags :size="16"/>标签</DropdownMenuItem>
+          <DropdownMenuItem class="gallery-menu-item" :disabled="albumBusy" @select="albumPickerOpen = true"><FolderPlus :size="16"/>加入相册</DropdownMenuItem>
+        </DropdownMenuContent></DropdownMenuPortal>
+      </DropdownMenuRoot>
       <button class="danger" :disabled="!selected.size || bulkWorking" @click="bulkTrashOpen = true"><Trash2 :size="16"/>移入回收站</button>
     </aside>
 
