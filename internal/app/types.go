@@ -14,8 +14,25 @@ type Image struct {
 	Width        int    `json:"width,omitempty"`
 	Height       int    `json:"height,omitempty"`
 	PublicURL    string `json:"url"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	DeleteError  string `json:"delete_error,omitempty"`
+	DeletedAt    string `json:"deleted_at,omitempty"`
+	PurgeError   string `json:"purge_error,omitempty"`
+	Favorite     bool   `json:"favorite"`
 	CreatedAt    string `json:"created_at"`
+}
+
+type ImageVariant struct {
+	ID        string `json:"id"`
+	ImageID   string `json:"image_id"`
+	Kind      string `json:"kind"`
+	ObjectKey string `json:"-"`
+	PublicURL string `json:"url"`
+	MIMEType  string `json:"mime_type"`
+	Size      int64  `json:"size"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	CreatedAt string `json:"created_at"`
 }
 
 type StorageRecord struct {

@@ -22,9 +22,12 @@ import (
 
 type storageBackend interface {
 	Put(context.Context, string, io.Reader, int64, string) (string, error)
+	Open(context.Context, string) (io.ReadCloser, error)
 	Delete(context.Context, string) error
 	Test(context.Context) error
 }
+
+type backendFactory func(StorageRecord) (storageBackend, error)
 
 func encryptJSON(key []byte, value any) (string, error) {
 	data, err := json.Marshal(value)
@@ -58,6 +61,13 @@ func (a *App) storageRecord(ctx context.Context, id string) (StorageRecord, erro
 }
 
 func (a *App) backend(record StorageRecord) (storageBackend, error) {
+	if a.backendFactory == nil {
+		return a.defaultBackend(record)
+	}
+	return a.backendFactory(record)
+}
+
+func (a *App) defaultBackend(record StorageRecord) (storageBackend, error) {
 	switch record.Type {
 	case "local":
 		dir := stringValue(record.Config, "data_dir")
@@ -152,6 +162,13 @@ func (s *localStorage) Delete(_ context.Context, key string) error {
 	}
 	return err
 }
+func (s *localStorage) Open(_ context.Context, key string) (io.ReadCloser, error) {
+	target, err := s.safe(key)
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(target)
+}
 func (s *localStorage) Test(_ context.Context) error {
 	if err := os.MkdirAll(s.root, 0700); err != nil {
 		return err
@@ -198,6 +215,17 @@ func (s *s3Storage) Put(ctx context.Context, key string, r io.Reader, size int64
 }
 func (s *s3Storage) Delete(ctx context.Context, key string) error {
 	return s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
+}
+func (s *s3Storage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	object, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := object.Stat(); err != nil {
+		_ = object.Close()
+		return nil, err
+	}
+	return object, nil
 }
 func (s *s3Storage) Test(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
@@ -272,6 +300,17 @@ func (s *webDAVStorage) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("WebDAV 删除失败: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+func (s *webDAVStorage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	resp, err := s.request(ctx, http.MethodGet, key, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("WebDAV 下载失败: HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }
 func (s *webDAVStorage) Test(ctx context.Context) error {
 	resp, err := s.request(ctx, "PROPFIND", "", nil)
@@ -360,6 +399,9 @@ func (s *telegramStorage) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("Telegram 删除失败: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+func (s *telegramStorage) Open(context.Context, string) (io.ReadCloser, error) {
+	return nil, errors.New("旧 Telegram 对象不支持回读")
 }
 func (s *telegramStorage) Test(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.api("getMe"), nil)
