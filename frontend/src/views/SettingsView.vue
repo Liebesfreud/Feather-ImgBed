@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from '@lucide/vue'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import { useAuthStore } from '../stores/auth'
 import type { ApiToken, Settings, StorageRecord } from '../types'
+import {
+  linkFormatOptions,
+  linkSeparatorOptions,
+  readCopyPreferences,
+  writeCopyPreferences,
+  type LinkFormat,
+  type LinkSeparator,
+} from '../linkFormats'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
@@ -30,6 +38,10 @@ const drafts = reactive<Record<string, StorageRecord>>({})
 const dangerOpen = ref(false)
 const dangerBusy = ref(false)
 const dangerTarget = ref<{ kind: 'storage'; item: StorageRecord } | { kind: 'token'; item: ApiToken } | null>(null)
+const initialCopyPreferences = readCopyPreferences()
+const copyFormat = ref<LinkFormat>(initialCopyPreferences.format)
+const autoCopy = ref(initialCopyPreferences.autoCopy)
+const copySeparator = ref<LinkSeparator>(initialCopyPreferences.separator)
 
 const tabs = [
   { id: 'base', label: '基础设置', icon: SlidersHorizontal }, { id: 'storage', label: '存储管理', icon: Database },
@@ -98,6 +110,14 @@ async function copyToken() { await navigator.clipboard.writeText(newToken.value)
 async function changePassword() { if (password.new_password !== password.confirm) { toast('两次输入的新密码不一致', 'error'); return } try { await putJSON('/auth/password', { current_password: password.current_password, new_password: password.new_password }); toast('密码已修改，请重新登录'); auth.reset() } catch (e) { toast(e instanceof Error ? e.message : '修改失败', 'error') } }
 function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '从未使用' }
 
+watch([copyFormat, autoCopy, copySeparator], () => {
+  writeCopyPreferences({
+    format: copyFormat.value,
+    autoCopy: autoCopy.value,
+    separator: copySeparator.value,
+  })
+})
+
 onMounted(async () => {
   try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = result[0]; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
 })
@@ -112,6 +132,7 @@ onMounted(async () => {
         <header class="settings-heading"><div><h1>基础设置</h1><p>调整站点信息、上传限制与文件命名方式。</p></div><button class="primary-button" :disabled="saving" @click="saveSettings"><Save :size="18"/>保存设置</button></header>
         <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
         <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong><small>关闭时将按 SHA-256 自动去重</small></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
+        <section class="form-section"><h2>复制偏好</h2><div class="form-grid"><label>默认链接格式<UiSelect v-model="copyFormat" :options="linkFormatOptions" aria-label="默认链接格式" /></label><label>批量链接分隔方式<UiSelect v-model="copySeparator" :options="linkSeparatorOptions" aria-label="批量链接分隔方式" /></label></div><label class="switch-row"><span><strong>上传完成后自动复制</strong><small>单图立即复制；批量上传在全部任务结束后一次复制成功项</small></span><UiSwitch v-model="autoCopy" aria-label="上传完成后自动复制" /></label></section>
       </TabsContent>
 
       <TabsContent value="storage" class="settings-main">
