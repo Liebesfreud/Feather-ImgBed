@@ -353,6 +353,9 @@ code { font-family: "JetBrains Mono", monospace }
 .checkbox-row label { display: flex; align-items: center; gap: 7px }
 .switch-row { margin-top: 20px; display: flex!important; flex-direction: row!important; align-items: center; justify-content: space-between; gap: 20px }
 .switch-row>span { display: grid; gap: 3px }.switch-row small { color: var(--muted); font-weight: 400 }
+.processing-settings>.switch-row { padding: 14px 0; border-top: 1px solid var(--line) }
+.processing-fields { margin: 2px 0 8px }
+.processing-fields input:disabled { opacity: .55; cursor: not-allowed }
 .storage-list { display: flex; flex-direction: column; gap: 10px }
 .storage-row { overflow: hidden; border-radius: var(--radius); background: var(--surface) }
 .storage-row.expanded { box-shadow: inset 3px 0 var(--primary) }

@@ -74,6 +74,15 @@ export interface Settings {
   allowed_types: string[]
   naming_rule: 'random' | 'date' | 'original'
   allow_duplicates: boolean
+  processing: ProcessingSettings
+}
+
+export interface ProcessingSettings {
+  generate_webp: boolean
+  webp_quality: number
+  watermark_enabled: boolean
+  watermark_text: string
+  watermark_position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'
 }
 
 export interface ApiToken {

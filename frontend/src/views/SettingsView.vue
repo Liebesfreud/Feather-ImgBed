@@ -14,6 +14,7 @@ import {
   type LinkFormat,
   type LinkSeparator,
 } from '../linkFormats'
+import { defaultProcessingSettings, normalizeProcessingSettings } from '../processingSettings'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
@@ -26,7 +27,7 @@ const loading = ref(true)
 const saving = ref(false)
 const testing = ref('')
 const expanded = ref('')
-const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false })
+const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false, processing: { ...defaultProcessingSettings } })
 const storages = ref<StorageRecord[]>([])
 const tokens = ref<ApiToken[]>([])
 const system = ref({ version: '-', database: '-', enabled_storages: 0 })
@@ -68,6 +69,13 @@ const namingRuleOptions = [
   { label: '保留原文件名', value: 'original' },
 ]
 const allowedFormats = [{ value: 'image/jpeg', label: 'JPEG' }, { value: 'image/png', label: 'PNG' }, { value: 'image/gif', label: 'GIF' }, { value: 'image/webp', label: 'WebP' }]
+const watermarkPositionOptions = [
+  { label: '左上角', value: 'top-left' },
+  { label: '右上角', value: 'top-right' },
+  { label: '左下角', value: 'bottom-left' },
+  { label: '右下角', value: 'bottom-right' },
+  { label: '居中', value: 'center' },
+]
 const dangerTitle = computed(() => dangerTarget.value?.kind === 'storage' ? '删除这个存储？' : '撤销这个 Token？')
 const dangerDescription = computed(() => {
   if (!dangerTarget.value) return ''
@@ -119,7 +127,7 @@ watch([copyFormat, autoCopy, copySeparator], () => {
 })
 
 onMounted(async () => {
-  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = result[0]; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
+  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = { ...result[0], processing: normalizeProcessingSettings(result[0].processing) }; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
 })
 </script>
 
@@ -132,6 +140,7 @@ onMounted(async () => {
         <header class="settings-heading"><div><h1>基础设置</h1><p>调整站点信息、上传限制与文件命名方式。</p></div><button class="primary-button" :disabled="saving" @click="saveSettings"><Save :size="18"/>保存设置</button></header>
         <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
         <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong><small>关闭时将按 SHA-256 自动去重</small></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
+        <section class="form-section processing-settings"><h2>图片处理</h2><p class="section-note">原图始终保留。WebP 和水印图会作为独立派生版本生成，处理失败不影响原图上传。</p><label class="switch-row"><span><strong>生成 WebP 版本</strong><small>为支持的静态图片额外生成 WebP 派生文件</small></span><UiSwitch v-model="settings.processing.generate_webp" aria-label="生成 WebP 版本" /></label><div class="form-grid processing-fields"><label>WebP 质量<input v-model.number="settings.processing.webp_quality" type="number" min="1" max="100" :disabled="!settings.processing.generate_webp"></label></div><label class="switch-row"><span><strong>生成水印版本</strong><small>保留无水印原图，同时生成带文字水印的派生文件</small></span><UiSwitch v-model="settings.processing.watermark_enabled" aria-label="生成水印版本" /></label><div class="form-grid processing-fields"><label>水印文字<input v-model.trim="settings.processing.watermark_text" maxlength="200" :disabled="!settings.processing.watermark_enabled" placeholder="例如 Feather ImgBed"></label><label>水印位置<UiSelect v-model="settings.processing.watermark_position" :options="watermarkPositionOptions" aria-label="水印位置" /></label></div></section>
         <section class="form-section"><h2>复制偏好</h2><div class="form-grid"><label>默认链接格式<UiSelect v-model="copyFormat" :options="linkFormatOptions" aria-label="默认链接格式" /></label><label>批量链接分隔方式<UiSelect v-model="copySeparator" :options="linkSeparatorOptions" aria-label="批量链接分隔方式" /></label></div><label class="switch-row"><span><strong>上传完成后自动复制</strong><small>单图立即复制；批量上传在全部任务结束后一次复制成功项</small></span><UiSwitch v-model="autoCopy" aria-label="上传完成后自动复制" /></label></section>
       </TabsContent>
 
