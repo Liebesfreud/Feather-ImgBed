@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Search, Database, CalendarDays, ArrowDownUp, CheckSquare, MoreHorizontal, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw, ListChecks, Eraser, Braces, Heart, Tags, Tag } from '@lucide/vue'
+import { Search, Database, CalendarDays, ArrowDownUp, CheckSquare, MoreHorizontal, ImageOff, LoaderCircle, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Link2, FileCode2, Code2, Trash2, UploadCloud, RefreshCw, ListChecks, Eraser, Braces, Heart, Tags, Tag, FolderPlus } from '@lucide/vue'
 import { useRoute, useRouter, type LocationQuery, type LocationQueryRaw } from 'vue-router'
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { api, deleteJSON, patchJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
-import type { ImageItem, StorageRecord, Tag as TagItem } from '../types'
+import type { Album, ImageItem, StorageRecord, Tag as TagItem } from '../types'
 import { formatImageLink, joinImageLinks, readCopyPreferences, type LinkFormat } from '../linkFormats'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import UiCheckbox from '../components/ui/UiCheckbox.vue'
@@ -13,12 +13,14 @@ import UiSelect from '../components/ui/UiSelect.vue'
 import UiTooltip from '../components/ui/UiTooltip.vue'
 import TagManagerDialog from '../components/TagManagerDialog.vue'
 import TagPickerDialog from '../components/TagPickerDialog.vue'
+import AlbumPickerDialog from '../components/AlbumPickerDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const images = ref<ImageItem[]>([])
 const storages = ref<StorageRecord[]>([])
 const tags = ref<TagItem[]>([])
+const albums = ref<Album[]>([])
 const cursor = ref('')
 const loading = ref(true)
 const loadingMore = ref(false)
@@ -44,6 +46,8 @@ const tagPickerMode = ref<'single' | 'bulk'>('single')
 const previewTags = ref<TagItem[]>([])
 const tagsBusy = ref(false)
 const favoriteBusy = ref(new Set<string>())
+const albumPickerOpen = ref(false)
+const albumBusy = ref(false)
 const syncingFromRoute = ref(false)
 let searchTimer = 0
 let requestSequence = 0
@@ -226,6 +230,18 @@ async function saveTags(payload: { action: 'replace' | 'add' | 'remove'; tagIds:
   } catch (error) { toast(error instanceof Error ? error.message : '更新标签失败', 'error') }
   finally { tagsBusy.value = false }
 }
+async function addSelectedToAlbum(albumID: string) {
+  if (!selected.value.size) return
+  albumBusy.value = true
+  try {
+    const result = await postJSON<{ requested: number; added: number }>(`/albums/${albumID}/images`, { ids: [...selected.value] })
+    albumPickerOpen.value = false
+    const album = albums.value.find((item) => item.id === albumID)
+    if (album) album.image_count += result.added
+    toast(`已向相册添加 ${result.added} 张图片`)
+  } catch (error) { toast(error instanceof Error ? error.message : '添加到相册失败', 'error') }
+  finally { albumBusy.value = false }
+}
 async function remove(item: ImageItem) {
   deleting.value = true
   try { await deleteJSON(`/images/${item.id}`); images.value = images.value.filter((image) => image.id !== item.id); closePreview(); toast('图片已移入回收站') }
@@ -248,7 +264,7 @@ watch([storage, from, to, order, favoriteOnly, tagFilter], () => void syncRoute(
 watch(() => route.fullPath, () => void applyRouteAndLoad())
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
-  ;[storages.value, tags.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<TagItem[]>('/tags')])
+  ;[storages.value, tags.value, albums.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<TagItem[]>('/tags'), api<Album[]>('/albums')])
   await applyRouteAndLoad()
 })
 onBeforeUnmount(() => {
@@ -300,6 +316,7 @@ onBeforeUnmount(() => {
       <button :disabled="!selected.size || bulkWorking" @click="setSelectedFavorite(true)"><Heart :size="16"/>收藏</button>
       <button :disabled="!selected.size || bulkWorking" @click="setSelectedFavorite(false)"><Heart :size="16"/>取消收藏</button>
       <button :disabled="!selected.size || tagsBusy" @click="openBulkTagPicker"><Tags :size="16"/>标签</button>
+      <button :disabled="!selected.size || albumBusy" @click="albumPickerOpen = true"><FolderPlus :size="16"/>加入相册</button>
       <button class="danger" :disabled="!selected.size || bulkWorking" @click="bulkTrashOpen = true"><Trash2 :size="16"/>移入回收站</button>
     </aside>
 
@@ -323,5 +340,6 @@ onBeforeUnmount(() => {
     <ConfirmDialog v-model:open="bulkTrashOpen" title="批量移入回收站？" :description="`已选择的 ${selected.size} 张图片将从图库中隐藏，之后仍可恢复。`" confirm-label="移入回收站" :busy="bulkWorking" @confirm="trashSelected" />
     <TagManagerDialog v-model:open="tagManagerOpen" @changed="tags = $event"/>
     <TagPickerDialog v-model:open="tagPickerOpen" :tags="tags" :initial-selected="tagPickerMode === 'single' ? previewTags.map(item => item.id) : []" :title="tagPickerMode === 'single' ? '设置图片标签' : `批量设置 ${selected.size} 张图片的标签`" :bulk="tagPickerMode === 'bulk'" :busy="tagsBusy" @save="saveTags"/>
+    <AlbumPickerDialog v-model:open="albumPickerOpen" :albums="albums" :count="selected.size" :busy="albumBusy" @save="addSelectedToAlbum"/>
   </section>
 </template>

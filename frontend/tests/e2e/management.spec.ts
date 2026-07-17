@@ -39,6 +39,7 @@ async function mockManagementAPI(page: Page) {
     if (path === '/auth/status') return fulfill(route, { initialized: true, authenticated: true, csrf_token: 'e2e-csrf' })
     if (path === '/storages') return fulfill(route, [{ id: 'local', name: '本地存储', type: 'local', enabled: true, config: {} }])
     if (path === '/tags') return fulfill(route, [])
+    if (path === '/albums') return fulfill(route, [])
     if (/^\/images\/[^/]+\/tags$/.test(path)) return fulfill(route, [])
     if (path === '/images' && request.method() === 'GET') return fulfill(route, { items: galleryItems, next_cursor: '' })
     if (path === '/images/bulk') {

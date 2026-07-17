@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun, Trash2 } from '@lucide/vue'
+import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun, Trash2, FolderHeart } from '@lucide/vue'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
@@ -28,6 +28,7 @@ const nav = [
   { to: '/upload', label: '上传图片', icon: CloudUpload },
   { to: '/gallery', label: '图片管理', icon: Images },
   { to: '/trash', label: '回收站', icon: Trash2 },
+  { to: '/albums', label: '相册', icon: FolderHeart },
   { to: '/settings', label: '系统设置', icon: Settings },
 ]
 const showApp = computed(() => !auth.checking && auth.initialized && auth.authenticated)
@@ -78,7 +79,7 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
         <span>轻羽图床</span>
       </RouterLink>
       <nav class="main-nav" aria-label="主导航">
-        <RouterLink v-for="item in nav" :key="item.to" :to="item.to" :class="{ active: route.path === item.to }" :aria-current="route.path === item.to ? 'page' : undefined" :title="item.label">
+        <RouterLink v-for="item in nav" :key="item.to" :to="item.to" :class="{ active: route.path === item.to || (item.to === '/albums' && route.path.startsWith('/albums/')) }" :aria-current="route.path === item.to || (item.to === '/albums' && route.path.startsWith('/albums/')) ? 'page' : undefined" :title="item.label">
           <component :is="item.icon" :size="19" />
           <span>{{ item.label }}</span>
         </RouterLink>
