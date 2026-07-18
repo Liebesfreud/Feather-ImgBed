@@ -34,23 +34,23 @@ type Album struct {
 }
 
 func (a *App) registerOrganizationRoutes() {
-	a.mux.Handle("PATCH /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.patchImage)))
-	a.mux.Handle("GET /api/v1/images/{id}/tags", a.requireAuth(http.HandlerFunc(a.getImageTags)))
-	a.mux.Handle("PUT /api/v1/images/{id}/tags", a.requireAuth(http.HandlerFunc(a.putImageTags)))
-	a.mux.Handle("POST /api/v1/images/bulk/tags", a.requireAuth(http.HandlerFunc(a.bulkImageTags)))
+	a.mux.Handle("PATCH /api/v1/images/{id}", a.protect(tokenScopeManage, http.HandlerFunc(a.patchImage)))
+	a.mux.Handle("GET /api/v1/images/{id}/tags", a.protect(tokenScopeRead, http.HandlerFunc(a.getImageTags)))
+	a.mux.Handle("PUT /api/v1/images/{id}/tags", a.protect(tokenScopeManage, http.HandlerFunc(a.putImageTags)))
+	a.mux.Handle("POST /api/v1/images/bulk/tags", a.protect(tokenScopeManage, http.HandlerFunc(a.bulkImageTags)))
 
-	a.mux.Handle("GET /api/v1/tags", a.requireAuth(http.HandlerFunc(a.listTags)))
-	a.mux.Handle("POST /api/v1/tags", a.requireAuth(http.HandlerFunc(a.createTag)))
-	a.mux.Handle("PUT /api/v1/tags/{id}", a.requireAuth(http.HandlerFunc(a.updateTag)))
-	a.mux.Handle("DELETE /api/v1/tags/{id}", a.requireAuth(http.HandlerFunc(a.deleteTag)))
+	a.mux.Handle("GET /api/v1/tags", a.protect(tokenScopeRead, http.HandlerFunc(a.listTags)))
+	a.mux.Handle("POST /api/v1/tags", a.protect(tokenScopeManage, http.HandlerFunc(a.createTag)))
+	a.mux.Handle("PUT /api/v1/tags/{id}", a.protect(tokenScopeManage, http.HandlerFunc(a.updateTag)))
+	a.mux.Handle("DELETE /api/v1/tags/{id}", a.protect(tokenScopeManage, http.HandlerFunc(a.deleteTag)))
 
-	a.mux.Handle("GET /api/v1/albums", a.requireAuth(http.HandlerFunc(a.listAlbums)))
-	a.mux.Handle("POST /api/v1/albums", a.requireAuth(http.HandlerFunc(a.createAlbum)))
-	a.mux.Handle("GET /api/v1/albums/{id}", a.requireAuth(http.HandlerFunc(a.getAlbum)))
-	a.mux.Handle("PUT /api/v1/albums/{id}", a.requireAuth(http.HandlerFunc(a.updateAlbum)))
-	a.mux.Handle("DELETE /api/v1/albums/{id}", a.requireAuth(http.HandlerFunc(a.deleteAlbum)))
-	a.mux.Handle("POST /api/v1/albums/{id}/images", a.requireAuth(http.HandlerFunc(a.addAlbumImages)))
-	a.mux.Handle("DELETE /api/v1/albums/{id}/images/{image_id}", a.requireAuth(http.HandlerFunc(a.removeAlbumImage)))
+	a.mux.Handle("GET /api/v1/albums", a.protect(tokenScopeRead, http.HandlerFunc(a.listAlbums)))
+	a.mux.Handle("POST /api/v1/albums", a.protect(tokenScopeManage, http.HandlerFunc(a.createAlbum)))
+	a.mux.Handle("GET /api/v1/albums/{id}", a.protect(tokenScopeRead, http.HandlerFunc(a.getAlbum)))
+	a.mux.Handle("PUT /api/v1/albums/{id}", a.protect(tokenScopeManage, http.HandlerFunc(a.updateAlbum)))
+	a.mux.Handle("DELETE /api/v1/albums/{id}", a.protect(tokenScopeManage, http.HandlerFunc(a.deleteAlbum)))
+	a.mux.Handle("POST /api/v1/albums/{id}/images", a.protect(tokenScopeManage, http.HandlerFunc(a.addAlbumImages)))
+	a.mux.Handle("DELETE /api/v1/albums/{id}/images/{image_id}", a.protect(tokenScopeManage, http.HandlerFunc(a.removeAlbumImage)))
 }
 
 func (a *App) patchImage(w http.ResponseWriter, r *http.Request) {

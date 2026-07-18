@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -182,8 +183,13 @@ func TestTokenAuthenticationAndSecretMasking(t *testing.T) {
 	}
 	_ = json.Unmarshal(response.Data, &tokenData)
 	recorder, _ = request(t, handler, http.MethodGet, "/api/v1/settings", nil, nil, "", tokenData.Token, "")
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("Bearer Token 鉴权失败: %d", recorder.Code)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("默认上传 Token 不应读取设置，得到 %d", recorder.Code)
+	}
+	body, contentType := uploadBody(t, pngBytes(t))
+	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/images", body, nil, "", tokenData.Token, contentType)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("默认上传 Token 应允许上传，得到 %d: %s", recorder.Code, recorder.Body.String())
 	}
 
 	storage := `{"name":"对象存储","type":"s3","enabled":true,"config":{"endpoint":"https://s3.example.com","bucket":"images","access_key":"access-secret","secret_key":"top-secret","public_url":"https://img.example.com"}}`
@@ -194,6 +200,40 @@ func TestTokenAuthenticationAndSecretMasking(t *testing.T) {
 	recorder, _ = request(t, handler, http.MethodGet, "/api/v1/storages", nil, cookie, "", "", "")
 	if recorder.Code != http.StatusOK || bytes.Contains(recorder.Body.Bytes(), []byte("top-secret")) || bytes.Contains(recorder.Body.Bytes(), []byte("access-secret")) {
 		t.Fatalf("敏感字段发生回显: %s", recorder.Body.String())
+	}
+}
+
+func TestTokenScopesRestrictAdministrativeActions(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+
+	payload := `{"name":"只读客户端","scopes":["images:read"],"expires_at":"2099-01-01T00:00:00Z"}`
+	recorder, response := request(t, handler, http.MethodPost, "/api/v1/tokens", strings.NewReader(payload), cookie, csrf, "", "application/json")
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("创建只读 Token 失败: %s", recorder.Body.String())
+	}
+	var tokenData struct {
+		Token  string   `json:"token"`
+		Scopes []string `json:"scopes"`
+	}
+	_ = json.Unmarshal(response.Data, &tokenData)
+	if len(tokenData.Scopes) != 1 || tokenData.Scopes[0] != tokenScopeRead {
+		t.Fatalf("Token 权限错误: %#v", tokenData.Scopes)
+	}
+
+	recorder, _ = request(t, handler, http.MethodGet, "/api/v1/images", nil, nil, "", tokenData.Token, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("只读 Token 无法读取图片: %d", recorder.Code)
+	}
+	body, contentType := uploadBody(t, pngBytes(t))
+	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/images", body, nil, "", tokenData.Token, contentType)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("只读 Token 不应允许上传，得到 %d", recorder.Code)
+	}
+	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/tokens", strings.NewReader(`{"name":"越权"}`), nil, "", tokenData.Token, "application/json")
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("只读 Token 不应创建 Token，得到 %d", recorder.Code)
 	}
 }
 
@@ -226,6 +266,73 @@ func TestPublicFilesDoNotExposeDirectoryListing(t *testing.T) {
 	recorder, _ := request(t, handler, http.MethodGet, "/files/", nil, nil, "", "", "")
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("本地文件根目录不应允许列目录，得到 %d", recorder.Code)
+	}
+}
+
+func TestProxyReaderSupportsRangesAndValidators(t *testing.T) {
+	content := "0123456789"
+	request := httptest.NewRequest(http.MethodGet, "/s3-files/test/object", nil)
+	request.Header.Set("Range", "bytes=2-5")
+	recorder := httptest.NewRecorder()
+	if err := serveProxyReader(recorder, request, strings.NewReader(content), "image/png", int64(len(content)), nowUTC(), "test", "object"); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != http.StatusPartialContent || recorder.Body.String() != "2345" {
+		t.Fatalf("范围响应错误: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	if recorder.Header().Get("Content-Range") != "bytes 2-5/10" || recorder.Header().Get("Content-Length") != "4" {
+		t.Fatalf("范围响应头错误: %#v", recorder.Header())
+	}
+
+	etag := recorder.Header().Get("ETag")
+	request = httptest.NewRequest(http.MethodGet, "/s3-files/test/object", nil)
+	request.Header.Set("If-None-Match", etag)
+	recorder = httptest.NewRecorder()
+	if err := serveProxyReader(recorder, request, strings.NewReader(content), "image/png", int64(len(content)), nowUTC(), "test", "object"); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != http.StatusNotModified || recorder.Body.Len() != 0 {
+		t.Fatalf("条件请求错误: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestLargeLibrarySearchAndRandomImage(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, _ := initializeTestApp(t, handler)
+	tx, err := a.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	statement, err := tx.Prepare(`INSERT INTO images(
+		id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,width,height,public_url,created_at
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := nowUTC()
+	for index := 0; index < 10_000; index++ {
+		name := fmt.Sprintf("photo-%05d.jpg", index)
+		if index == 7_777 {
+			name = "target-needle-photo.jpg"
+		}
+		id := fmt.Sprintf("large-%05d", index)
+		if _, err := statement.Exec(id, id, name, id+".jpg", "local", "local", "image/jpeg", 10, 1, 1, "/files/"+id+".jpg", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = statement.Close()
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder, response := request(t, handler, http.MethodGet, "/api/v1/images?search=needle&limit=10", nil, cookie, "", "", "")
+	if recorder.Code != http.StatusOK || !bytes.Contains(response.Data, []byte("target-needle-photo.jpg")) {
+		t.Fatalf("大图库 FTS 搜索失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	recorder, _ = request(t, handler, http.MethodGet, "/api/v1/random", nil, nil, "", "", "")
+	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") == "" {
+		t.Fatalf("大图库随机图失败: %d %s", recorder.Code, recorder.Body.String())
 	}
 }
 

@@ -61,6 +61,7 @@ type Settings struct {
 type ProcessingSettings struct {
 	GenerateWebP      bool   `json:"generate_webp"`
 	WebPQuality       int    `json:"webp_quality"`
+	StripMetadata     bool   `json:"strip_metadata"`
 	WatermarkEnabled  bool   `json:"watermark_enabled"`
 	WatermarkText     string `json:"watermark_text"`
 	WatermarkPosition string `json:"watermark_position"`
@@ -84,6 +85,24 @@ type principal struct {
 	UserID     int64
 	ViaSession bool
 	CSRFToken  string
+	TokenID    string
+	Scopes     map[string]bool
+}
+
+const (
+	tokenScopeUpload = "images:upload"
+	tokenScopeRead   = "images:read"
+	tokenScopeManage = "images:manage"
+	tokenScopeDelete = "images:delete"
+	tokenScopeAdmin  = "settings:admin"
+)
+
+var allowedTokenScopes = map[string]bool{
+	tokenScopeUpload: true,
+	tokenScopeRead:   true,
+	tokenScopeManage: true,
+	tokenScopeDelete: true,
+	tokenScopeAdmin:  true,
 }
 
 type contextKey string

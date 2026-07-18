@@ -14,6 +14,7 @@ import (
 )
 
 const maxImageBatch = 100
+const maxPurgeAllBatch = 25
 
 func (a *App) deleteImage(w http.ResponseWriter, r *http.Request) {
 	result, err := a.db.ExecContext(r.Context(), `UPDATE images
@@ -53,8 +54,18 @@ func (a *App) bulkImages(w http.ResponseWriter, r *http.Request) {
 	)
 	switch strings.ToLower(strings.TrimSpace(input.Action)) {
 	case "trash":
+		p, _ := r.Context().Value(principalKey).(principal)
+		if !p.hasScope(tokenScopeDelete) {
+			writeError(w, r, http.StatusForbidden, "TOKEN_SCOPE_REQUIRED", "当前 API Token 没有删除图片的权限")
+			return
+		}
 		requested, affected, notFound, err = a.bulkTrashImages(r.Context(), ids)
 	case "favorite":
+		p, _ := r.Context().Value(principalKey).(principal)
+		if !p.hasScope(tokenScopeManage) {
+			writeError(w, r, http.StatusForbidden, "TOKEN_SCOPE_REQUIRED", "当前 API Token 没有管理图片的权限")
+			return
+		}
 		if input.Value == nil {
 			writeError(w, r, http.StatusBadRequest, "INVALID_FAVORITE", "favorite 操作必须提供布尔值 value")
 			return
@@ -261,7 +272,7 @@ func (a *App) purgeTrash(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows, err := a.db.QueryContext(r.Context(), `SELECT id FROM images
-			WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC`)
+			WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT ?`, maxPurgeAllBatch)
 		if err != nil {
 			writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取回收站失败")
 			return
@@ -308,11 +319,20 @@ func (a *App) purgeTrash(w http.ResponseWriter, r *http.Request) {
 	if failures > 0 {
 		status = http.StatusMultiStatus
 	}
+	var remaining int
+	if input.All {
+		if err := a.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM images WHERE deleted_at IS NOT NULL`).Scan(&remaining); err != nil {
+			writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取剩余回收站数量失败")
+			return
+		}
+	}
 	writeData(w, r, status, map[string]any{
 		"items":     results,
 		"total":     len(results),
 		"succeeded": len(results) - failures,
 		"failed":    failures,
+		"remaining": remaining,
+		"has_more":  remaining > 0,
 	})
 }
 

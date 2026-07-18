@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,20 +11,22 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 type App struct {
-	cfg            Config
-	db             *sql.DB
-	masterKey      []byte
-	logger         *slog.Logger
-	mux            *http.ServeMux
-	limiter        *rateLimiter
-	trustedProxies []netip.Prefix
-	backendFactory backendFactory
+	cfg             Config
+	db              *sql.DB
+	masterKey       []byte
+	logger          *slog.Logger
+	mux             *http.ServeMux
+	limiter         *rateLimiter
+	trustedProxies  []netip.Prefix
+	backendFactory  backendFactory
+	processingSlots chan struct{}
 }
 
 func New(cfg Config, logger *slog.Logger) (*App, error) {
@@ -54,6 +55,7 @@ func New(cfg Config, logger *slog.Logger) (*App, error) {
 	application := &App{
 		cfg: cfg, db: db, masterKey: key, logger: logger,
 		mux: http.NewServeMux(), limiter: newRateLimiter(), trustedProxies: trustedProxies,
+		processingSlots: make(chan struct{}, 1),
 	}
 	application.backendFactory = application.defaultBackend
 	settings, err := loadSettings(context.Background(), db)
@@ -83,30 +85,30 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/v1/auth/login", a.limit("login", 10, time.Minute, a.login))
 	a.mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout)))
 	a.mux.Handle("PUT /api/v1/auth/password", a.requireAuth(http.HandlerFunc(a.changePassword)))
-	a.mux.Handle("GET /api/v1/tokens", a.requireAuth(http.HandlerFunc(a.listTokens)))
-	a.mux.Handle("POST /api/v1/tokens", a.requireAuth(http.HandlerFunc(a.createToken)))
-	a.mux.Handle("DELETE /api/v1/tokens/{id}", a.requireAuth(http.HandlerFunc(a.deleteToken)))
+	a.mux.Handle("GET /api/v1/tokens", a.protect(tokenScopeAdmin, http.HandlerFunc(a.listTokens)))
+	a.mux.Handle("POST /api/v1/tokens", a.protect(tokenScopeAdmin, http.HandlerFunc(a.createToken)))
+	a.mux.Handle("DELETE /api/v1/tokens/{id}", a.protect(tokenScopeAdmin, http.HandlerFunc(a.deleteToken)))
 
-	a.mux.Handle("GET /api/v1/images", a.requireAuth(http.HandlerFunc(a.listImages)))
-	a.mux.Handle("POST /api/v1/images", a.requireAuth(a.limitHandler("upload", 60, time.Minute, http.HandlerFunc(a.uploadImages))))
-	a.mux.Handle("POST /api/v1/upload", a.requireAuth(a.limitHandler("upload", 60, time.Minute, http.HandlerFunc(a.uploadImages))))
+	a.mux.Handle("GET /api/v1/images", a.protect(tokenScopeRead, http.HandlerFunc(a.listImages)))
+	a.mux.Handle("POST /api/v1/images", a.protect(tokenScopeUpload, a.limitHandler("upload", 120, time.Minute, http.HandlerFunc(a.uploadImages))))
+	a.mux.Handle("POST /api/v1/upload", a.protect(tokenScopeUpload, a.limitHandler("upload", 120, time.Minute, http.HandlerFunc(a.uploadImages))))
 	a.mux.HandleFunc("GET /api/v1/random", a.randomImage)
-	a.mux.Handle("GET /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.getImage)))
-	a.mux.Handle("DELETE /api/v1/images/{id}", a.requireAuth(http.HandlerFunc(a.deleteImage)))
+	a.mux.Handle("GET /api/v1/images/{id}", a.protect(tokenScopeRead, http.HandlerFunc(a.getImage)))
+	a.mux.Handle("DELETE /api/v1/images/{id}", a.protect(tokenScopeDelete, http.HandlerFunc(a.deleteImage)))
 	a.mux.Handle("POST /api/v1/images/bulk", a.requireAuth(http.HandlerFunc(a.bulkImages)))
-	a.mux.Handle("GET /api/v1/trash", a.requireAuth(http.HandlerFunc(a.listTrash)))
-	a.mux.Handle("GET /api/v1/trash/{id}/file/{kind}", a.requireAuth(http.HandlerFunc(a.serveTrashFile)))
-	a.mux.Handle("POST /api/v1/trash/{id}/restore", a.requireAuth(http.HandlerFunc(a.restoreImage)))
-	a.mux.Handle("DELETE /api/v1/trash/{id}", a.requireAuth(http.HandlerFunc(a.purgeImage)))
-	a.mux.Handle("POST /api/v1/trash/purge", a.requireAuth(http.HandlerFunc(a.purgeTrash)))
+	a.mux.Handle("GET /api/v1/trash", a.protect(tokenScopeRead, http.HandlerFunc(a.listTrash)))
+	a.mux.Handle("GET /api/v1/trash/{id}/file/{kind}", a.protect(tokenScopeRead, http.HandlerFunc(a.serveTrashFile)))
+	a.mux.Handle("POST /api/v1/trash/{id}/restore", a.protect(tokenScopeManage, http.HandlerFunc(a.restoreImage)))
+	a.mux.Handle("DELETE /api/v1/trash/{id}", a.protect(tokenScopeDelete, http.HandlerFunc(a.purgeImage)))
+	a.mux.Handle("POST /api/v1/trash/purge", a.protect(tokenScopeDelete, http.HandlerFunc(a.purgeTrash)))
 
-	a.mux.Handle("GET /api/v1/storages", a.requireAuth(http.HandlerFunc(a.listStorages)))
-	a.mux.Handle("POST /api/v1/storages/test", a.requireAuth(http.HandlerFunc(a.testStorage)))
-	a.mux.Handle("PUT /api/v1/storages/{id}", a.requireAuth(http.HandlerFunc(a.putStorage)))
-	a.mux.Handle("DELETE /api/v1/storages/{id}", a.requireAuth(http.HandlerFunc(a.deleteStorage)))
-	a.mux.Handle("GET /api/v1/settings", a.requireAuth(http.HandlerFunc(a.getSettings)))
-	a.mux.Handle("PUT /api/v1/settings", a.requireAuth(http.HandlerFunc(a.putSettings)))
-	a.mux.Handle("GET /api/v1/system", a.requireAuth(http.HandlerFunc(a.systemInfo)))
+	a.mux.Handle("GET /api/v1/storages", a.protect(tokenScopeRead, http.HandlerFunc(a.listStorages)))
+	a.mux.Handle("POST /api/v1/storages/test", a.protect(tokenScopeAdmin, http.HandlerFunc(a.testStorage)))
+	a.mux.Handle("PUT /api/v1/storages/{id}", a.protect(tokenScopeAdmin, http.HandlerFunc(a.putStorage)))
+	a.mux.Handle("DELETE /api/v1/storages/{id}", a.protect(tokenScopeAdmin, http.HandlerFunc(a.deleteStorage)))
+	a.mux.Handle("GET /api/v1/settings", a.protect(tokenScopeRead, http.HandlerFunc(a.getSettings)))
+	a.mux.Handle("PUT /api/v1/settings", a.protect(tokenScopeAdmin, http.HandlerFunc(a.putSettings)))
+	a.mux.Handle("GET /api/v1/system", a.protect(tokenScopeRead, http.HandlerFunc(a.systemInfo)))
 
 	a.registerOrganizationRoutes()
 	a.registerImportRoutes()
@@ -166,14 +168,8 @@ func (a *App) serveS3File(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var exists int
-	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(
-		SELECT 1 FROM images i
-		WHERE i.storage_type='s3' AND i.storage_id=? AND i.deleted_at IS NULL
-			AND (i.object_key=? OR EXISTS (
-				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
-			))
-	)`, storageID, key, key).Scan(&exists); err != nil || exists != 1 {
+	mimeType, size, createdAt, err := a.proxyObjectMetadata(r.Context(), "s3", storageID, key)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -195,14 +191,7 @@ func (a *App) serveS3File(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
-	buffered := bufio.NewReader(reader)
-	sample, _ := buffered.Peek(512)
-	if len(sample) > 0 {
-		w.Header().Set("Content-Type", http.DetectContentType(sample))
-	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if _, err := io.Copy(w, buffered); err != nil {
+	if err := serveProxyReader(w, r, reader, mimeType, size, createdAt, storageID, key); err != nil {
 		a.logger.Warn("S3 文件响应中断", "storage_id", storageID, "object_key", key, "error", err)
 	}
 }
@@ -214,14 +203,8 @@ func (a *App) serveTelegramFile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var exists int
-	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(
-		SELECT 1 FROM images i
-		WHERE i.storage_type='telegram' AND i.storage_id=? AND i.deleted_at IS NULL
-			AND (i.object_key=? OR EXISTS (
-				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
-			))
-	)`, storageID, key, key).Scan(&exists); err != nil || exists != 1 {
+	mimeType, size, createdAt, err := a.proxyObjectMetadata(r.Context(), "telegram", storageID, key)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -243,16 +226,104 @@ func (a *App) serveTelegramFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
-	buffered := bufio.NewReader(reader)
-	sample, _ := buffered.Peek(512)
-	if len(sample) > 0 {
-		w.Header().Set("Content-Type", http.DetectContentType(sample))
-	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if _, err := io.Copy(w, buffered); err != nil {
+	if err := serveProxyReader(w, r, reader, mimeType, size, createdAt, storageID, key); err != nil {
 		a.logger.Warn("Telegram 文件响应中断", "storage_id", storageID, "error", err)
 	}
+}
+
+func (a *App) proxyObjectMetadata(ctx context.Context, storageType, storageID, key string) (string, int64, string, error) {
+	var mimeType, createdAt string
+	var size int64
+	err := a.db.QueryRowContext(ctx, `SELECT mime_type,size,created_at FROM (
+		SELECT i.mime_type,i.size,i.created_at,0 AS priority
+		FROM images i
+		WHERE i.storage_type=? AND i.storage_id=? AND i.deleted_at IS NULL AND i.object_key=?
+		UNION ALL
+		SELECT v.mime_type,v.size,v.created_at,1 AS priority
+		FROM image_variants v
+		JOIN images i ON i.id=v.image_id
+		WHERE i.storage_type=? AND i.storage_id=? AND i.deleted_at IS NULL AND v.object_key=?
+	) ORDER BY priority LIMIT 1`,
+		storageType, storageID, key, storageType, storageID, key,
+	).Scan(&mimeType, &size, &createdAt)
+	return mimeType, size, createdAt, err
+}
+
+func serveProxyReader(w http.ResponseWriter, r *http.Request, reader io.Reader, mimeType string, size int64, createdAt, storageID, key string) error {
+	etag := `"` + hashToken(storageID+"\x00"+key) + `"`
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if created, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
+		w.Header().Set("Last-Modified", created.UTC().Format(http.TimeFormat))
+	}
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	start, end, partial, valid := parseByteRange(r.Header.Get("Range"), size)
+	if !valid {
+		w.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return nil
+	}
+	length := size
+	if partial {
+		length = end - start + 1
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	if partial {
+		w.WriteHeader(http.StatusPartialContent)
+		if start > 0 {
+			if _, err := io.CopyN(io.Discard, reader, start); err != nil {
+				return err
+			}
+		}
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+	if r.Method == http.MethodHead {
+		return nil
+	}
+	_, err := io.CopyN(w, reader, length)
+	return err
+}
+
+func parseByteRange(header string, size int64) (int64, int64, bool, bool) {
+	if header == "" {
+		return 0, max(0, size-1), false, true
+	}
+	if size <= 0 || !strings.HasPrefix(header, "bytes=") || strings.Contains(header, ",") {
+		return 0, 0, false, false
+	}
+	first, last, ok := strings.Cut(strings.TrimPrefix(header, "bytes="), "-")
+	if !ok {
+		return 0, 0, false, false
+	}
+	if first == "" {
+		suffix, err := strconv.ParseInt(last, 10, 64)
+		if err != nil || suffix <= 0 {
+			return 0, 0, false, false
+		}
+		suffix = min(suffix, size)
+		return size - suffix, size - 1, true, true
+	}
+	start, err := strconv.ParseInt(first, 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false, false
+	}
+	end := size - 1
+	if last != "" {
+		end, err = strconv.ParseInt(last, 10, 64)
+		if err != nil || end < start {
+			return 0, 0, false, false
+		}
+		end = min(end, size-1)
+	}
+	return start, end, true, true
 }
 
 func (a *App) health(w http.ResponseWriter, r *http.Request) {

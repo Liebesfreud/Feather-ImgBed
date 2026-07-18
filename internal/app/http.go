@@ -24,6 +24,31 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
+type responseMetrics struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *responseMetrics) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseMetrics) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += int64(n)
+	return n, err
+}
+
+func (w *responseMetrics) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func writeData(w http.ResponseWriter, r *http.Request, status int, data any) {
 	writeJSON(w, status, envelope{Success: true, Data: data, RequestID: requestID(r)})
 }
@@ -77,7 +102,7 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: http: data: blob:; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: http: data: blob:; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -85,8 +110,21 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 func (a *App) logRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		a.logger.Info("请求完成", "request_id", requestID(r), "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(start).Milliseconds())
+		metrics := &responseMetrics{ResponseWriter: w}
+		next.ServeHTTP(metrics, r)
+		status := metrics.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		a.logger.Info("请求完成",
+			"request_id", requestID(r),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", status,
+			"response_bytes", metrics.bytes,
+			"client_ip", a.clientIP(r),
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
 	})
 }
 

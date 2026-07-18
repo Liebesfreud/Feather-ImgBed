@@ -151,16 +151,16 @@ func TestS3ProxyReadsPrivateR2Object(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := nowUTC()
+	content := []byte("\xff\xd8\xffprivate-r2-image")
 	if _, err := a.db.Exec(`INSERT INTO storages(id,name,type,enabled,config,encrypted,created_at,updated_at)
 		VALUES(?,?,?,?,?,1,?,?)`, record.ID, record.Name, record.Type, 1, encrypted, now, now); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.db.Exec(`INSERT INTO images(
 		id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,created_at
-	) VALUES('image','hash','photo.jpg','image.jpg','s3','r2','image/jpeg',10,'/s3-files/r2/image.jpg',?)`, now); err != nil {
+		) VALUES('image','hash','photo.jpg','image.jpg','s3','r2','image/jpeg',?,'/s3-files/r2/image.jpg',?)`, len(content), now); err != nil {
 		t.Fatal(err)
 	}
-	content := []byte("\xff\xd8\xffprivate-r2-image")
 	a.backendFactory = func(StorageRecord) (storageBackend, error) {
 		return &recordingUploadStorage{openContent: content}, nil
 	}

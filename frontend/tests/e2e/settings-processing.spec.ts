@@ -12,6 +12,7 @@ const baseSettings = {
   processing: {
     generate_webp: false,
     webp_quality: 82,
+    strip_metadata: false,
     watermark_enabled: false,
     watermark_text: '',
     watermark_position: 'bottom-right',
@@ -36,6 +37,7 @@ test('设置页保存 WebP 与水印派生配置', async ({ page }) => {
 
   await page.goto('/settings')
   await page.getByRole('switch', { name: '生成 WebP 版本' }).click()
+  await page.getByRole('switch', { name: '清理图片元数据' }).click()
   await page.getByLabel('WebP 质量').fill('88')
   await page.getByRole('switch', { name: '生成水印版本' }).click()
   await page.getByLabel('水印文字').fill('Feather')
@@ -46,6 +48,7 @@ test('设置页保存 WebP 与水印派生配置', async ({ page }) => {
   await expect.poll(() => saved?.processing).toEqual({
     generate_webp: true,
     webp_quality: 88,
+    strip_metadata: true,
     watermark_enabled: true,
     watermark_text: 'Feather',
     watermark_position: 'top-left',

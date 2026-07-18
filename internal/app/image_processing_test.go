@@ -153,6 +153,23 @@ func TestProcessingSettingsValidation(t *testing.T) {
 	}
 }
 
+func TestSanitizeImageFileReencodesStaticImage(t *testing.T) {
+	file := processingSourceFile(t, processingPNGBytes(t))
+	size, config, err := sanitizeImageFile(file, "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size <= 0 || config.Width != 96 || config.Height != 64 {
+		t.Fatalf("清理后的图片信息错误: size=%d config=%+v", size, config)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := image.Decode(file); err != nil {
+		t.Fatalf("清理后的图片无法解码: %v", err)
+	}
+}
+
 func saveTestProcessingSettings(t *testing.T, a *App, processing ProcessingSettings) {
 	t.Helper()
 	settings, err := loadSettings(t.Context(), a.db)

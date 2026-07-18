@@ -135,13 +135,13 @@ func TestTelegramPublicFileRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	const objectKey = "v2/42/ZmlsZS1pZA/2026/07/test.png"
+	content := pngBytes(t)
 	if _, err := a.db.Exec(`INSERT INTO images(
-		id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,created_at
-	) VALUES('tg-image','hash','test.png',?,'telegram','local','image/png',10,?,?)`,
-		objectKey, publicURL(StorageRecord{ID: "local", Type: "telegram"}, objectKey, ""), nowUTC()); err != nil {
+			id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,created_at
+		) VALUES('tg-image','hash','test.png',?,'telegram','local','image/png',?,?,?)`,
+		objectKey, len(content), publicURL(StorageRecord{ID: "local", Type: "telegram"}, objectKey, ""), nowUTC()); err != nil {
 		t.Fatal(err)
 	}
-	content := pngBytes(t)
 	storage := &recordingUploadStorage{openContent: content}
 	a.backendFactory = func(record StorageRecord) (storageBackend, error) {
 		if record.ID != "local" || record.Type != "telegram" {

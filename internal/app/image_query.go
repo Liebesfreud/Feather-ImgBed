@@ -72,14 +72,41 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_FORMAT", "format 只能是 json 或留空")
 		return
 	}
+	storageID := strings.TrimSpace(r.URL.Query().Get("storage_id"))
+	maxQuery := "SELECT COALESCE(MAX(rowid),0) FROM images WHERE deleted_at IS NULL"
+	maxArgs := []any{}
+	if storageID != "" {
+		maxQuery += " AND storage_id=?"
+		maxArgs = append(maxArgs, storageID)
+	}
+	var maxRowID int64
+	if err := a.db.QueryRowContext(r.Context(), maxQuery, maxArgs...).Scan(&maxRowID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取随机图片失败")
+		return
+	}
 	query := "SELECT " + imageColumns + " FROM images i WHERE i.deleted_at IS NULL"
 	args := []any{}
-	if storageID := strings.TrimSpace(r.URL.Query().Get("storage_id")); storageID != "" {
+	if storageID != "" {
 		query += " AND i.storage_id=?"
 		args = append(args, storageID)
 	}
-	query += " ORDER BY RANDOM() LIMIT 1"
+	if maxRowID > 0 {
+		query += " AND i.rowid>=((random() & 9223372036854775807) % ?) ORDER BY i.rowid LIMIT 1"
+		args = append(args, maxRowID+1)
+	} else {
+		query += " LIMIT 1"
+	}
 	img, err := scanImage(a.db.QueryRowContext(r.Context(), query, args...))
+	if isNotFound(err) && maxRowID > 0 {
+		fallback := "SELECT " + imageColumns + " FROM images i WHERE i.deleted_at IS NULL"
+		fallbackArgs := []any{}
+		if storageID != "" {
+			fallback += " AND i.storage_id=?"
+			fallbackArgs = append(fallbackArgs, storageID)
+		}
+		fallback += " ORDER BY i.rowid LIMIT 1"
+		img, err = scanImage(a.db.QueryRowContext(r.Context(), fallback, fallbackArgs...))
+	}
 	if isNotFound(err) {
 		writeError(w, r, http.StatusNotFound, "RANDOM_IMAGE_NOT_FOUND", "没有符合条件的图片")
 		return
@@ -123,8 +150,13 @@ func (a *App) listImages(w http.ResponseWriter, r *http.Request) {
 		args = append(args, storage)
 	}
 	if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
-		query += " AND i.original_name LIKE ? ESCAPE '\\'"
-		args = append(args, "%"+escapeLike(search)+"%")
+		if len([]rune(search)) >= 3 {
+			query += " AND i.rowid IN (SELECT rowid FROM image_search WHERE original_name MATCH ?)"
+			args = append(args, `"`+strings.ReplaceAll(search, `"`, `""`)+`"`)
+		} else {
+			query += " AND i.original_name LIKE ? ESCAPE '\\'"
+			args = append(args, "%"+escapeLike(search)+"%")
+		}
 	}
 	if favorite := r.URL.Query().Get("favorite"); favorite != "" {
 		if favorite != "true" && favorite != "false" {

@@ -3,8 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -142,6 +144,34 @@ func TestThumbnailGenerationFailureFallsBackToOriginal(t *testing.T) {
 	_ = a.db.QueryRow(`SELECT count(*) FROM image_variants`).Scan(&variantCount)
 	if imageCount != 1 || variantCount != 0 {
 		t.Fatalf("回退后的数据库记录错误: images=%d variants=%d", imageCount, variantCount)
+	}
+}
+
+func TestIngestRejectsImageOverPixelLimitBeforeStorageWrite(t *testing.T) {
+	a, _, _ := prepareIngestTest(t)
+	storage := &recordingUploadStorage{}
+	a.backendFactory = func(StorageRecord) (storageBackend, error) { return storage, nil }
+
+	header := make([]byte, 33)
+	copy(header, []byte("\x89PNG\r\n\x1a\n"))
+	binary.BigEndian.PutUint32(header[8:12], 13)
+	copy(header[12:16], "IHDR")
+	binary.BigEndian.PutUint32(header[16:20], 10_000)
+	binary.BigEndian.PutUint32(header[20:24], 5_000)
+	copy(header[24:29], []byte{8, 2, 0, 0, 0})
+	binary.BigEndian.PutUint32(header[29:33], crc32.ChecksumIEEE(header[12:29]))
+
+	if config, _, err := image.DecodeConfig(bytes.NewReader(header)); err != nil ||
+		int64(config.Width)*int64(config.Height) <= maxImagePixels {
+		t.Fatalf("超大 PNG 测试头无效: config=%+v err=%v", config, err)
+	}
+	_, err := a.ingestImage(context.Background(), bytes.NewReader(header), "oversized.png", int64(len(header)), "local")
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) || apiErr.Code != "IMAGE_TOO_LARGE" {
+		t.Fatalf("错误为 %v，期望 IMAGE_TOO_LARGE", err)
+	}
+	if storage.putCount != 0 {
+		t.Fatalf("超大图片不应写入存储，实际写入 %d 次", storage.putCount)
 	}
 }
 

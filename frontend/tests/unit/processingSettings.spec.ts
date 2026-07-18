@@ -5,6 +5,7 @@ describe('图片处理设置', () => {
     expect(normalizeProcessingSettings()).toEqual({
       generate_webp: false,
       webp_quality: 82,
+      strip_metadata: false,
       watermark_enabled: false,
       watermark_text: '',
       watermark_position: 'bottom-right',
@@ -15,12 +16,14 @@ describe('图片处理设置', () => {
     expect(normalizeProcessingSettings({
       generate_webp: true,
       webp_quality: 101,
+      strip_metadata: true,
       watermark_enabled: true,
       watermark_text: 'Feather',
       watermark_position: 'unknown' as 'center',
     })).toMatchObject({
       generate_webp: true,
       webp_quality: 82,
+      strip_metadata: true,
       watermark_enabled: true,
       watermark_text: 'Feather',
       watermark_position: 'bottom-right',

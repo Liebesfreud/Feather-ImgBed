@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { CloudUpload, ImagePlus, Clipboard, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database, X, Braces, Clock3 } from '@lucide/vue'
+import { CloudUpload, ImagePlus, Clipboard, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database, X, Braces, Clock3, RefreshCw } from '@lucide/vue'
 import { api, ApiError, postJSON, uploadFile } from '../api'
 import { toast } from '../toast'
 import type { ImageItem, Settings, StorageRecord } from '../types'
@@ -27,6 +27,7 @@ const dragging = ref(false)
 const selectedStorage = ref('')
 const storages = ref<StorageRecord[]>([])
 const settings = ref<Settings | null>(null)
+const initialLoadFailed = ref(false)
 const uploadMode = ref<'local' | 'url'>('local')
 const remoteURL = ref('')
 const remoteFilename = ref('')
@@ -185,11 +186,20 @@ async function copyAll() {
 function clearCompleted() { queue.value.filter((item) => item.state === 'success').forEach((item) => URL.revokeObjectURL(item.preview)); queue.value = queue.value.filter((item) => item.state !== 'success') }
 function beforeUnload(event: BeforeUnloadEvent) { if (uploading.value) event.preventDefault() }
 
-onMounted(async () => {
+async function loadUploadOptions() {
+  initialLoadFailed.value = false
+  try {
+    ;[storages.value, settings.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<Settings>('/settings')])
+    selectedStorage.value = settings.value.default_storage_id
+  } catch (error) {
+    initialLoadFailed.value = true
+    toast(error instanceof Error ? error.message : '上传配置读取失败', 'error')
+  }
+}
+onMounted(() => {
   document.addEventListener('paste', onPaste)
   window.addEventListener('beforeunload', beforeUnload)
-  ;[storages.value, settings.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<Settings>('/settings')])
-  selectedStorage.value = settings.value.default_storage_id
+  void loadUploadOptions()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('paste', onPaste)
@@ -200,6 +210,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="content-stack upload-view">
+    <div v-if="initialLoadFailed" class="gallery-state load-error-banner"><CircleAlert :size="32"/><h2>上传配置暂时无法读取</h2><button class="soft-button" @click="loadUploadOptions"><RefreshCw :size="17"/>重新加载</button></div>
     <header class="page-heading"><div><h1>上传图片</h1><p>拖放、粘贴或选择文件，链接会在上传完成后立即生成。</p></div>
       <div class="storage-select"><Database :size="17"/><span>上传至</span><UiSelect v-model="selectedStorage" :options="storageOptions" aria-label="选择上传存储" /></div>
     </header>

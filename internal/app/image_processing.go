@@ -13,6 +13,7 @@ import (
 	"os"
 
 	webpencoder "github.com/deepteams/webp"
+	"github.com/disintegration/imaging"
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -34,13 +35,53 @@ type generatedVariant struct {
 }
 
 func generateThumbnail(source *os.File, sourceMIME, imageID string) (generatedImage, error) {
-	if _, err := source.Seek(0, io.SeekStart); err != nil {
-		return generatedImage{}, err
-	}
-	decoded, _, err := image.Decode(source)
+	decoded, err := decodeOrientedImage(source)
 	if err != nil {
 		return generatedImage{}, err
 	}
+	return generateThumbnailFromImage(decoded, sourceMIME, imageID)
+}
+
+func decodeOrientedImage(source *os.File) (image.Image, error) {
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return imaging.Decode(source, imaging.AutoOrientation(true))
+}
+
+func sanitizeImageFile(source *os.File, sourceMIME string) (int64, image.Config, error) {
+	decoded, err := decodeOrientedImage(source)
+	if err != nil {
+		return 0, image.Config{}, err
+	}
+	if err := source.Truncate(0); err != nil {
+		return 0, image.Config{}, err
+	}
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return 0, image.Config{}, err
+	}
+	switch sourceMIME {
+	case "image/jpeg":
+		err = jpeg.Encode(source, decoded, &jpeg.Options{Quality: 95})
+	case "image/png":
+		err = png.Encode(source, decoded)
+	case "image/webp":
+		err = webpencoder.Encode(source, decoded, &webpencoder.EncoderOptions{Quality: 95, Method: 4})
+	default:
+		return 0, image.Config{}, fmt.Errorf("不支持清理 %s 元数据", sourceMIME)
+	}
+	if err != nil {
+		return 0, image.Config{}, err
+	}
+	size, err := source.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, image.Config{}, err
+	}
+	bounds := decoded.Bounds()
+	return size, image.Config{Width: bounds.Dx(), Height: bounds.Dy()}, nil
+}
+
+func generateThumbnailFromImage(decoded image.Image, sourceMIME, imageID string) (generatedImage, error) {
 	bounds := decoded.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if width <= 0 || height <= 0 {
@@ -61,6 +102,7 @@ func generateThumbnail(source *os.File, sourceMIME, imageID string) (generatedIm
 	xdraw.CatmullRom.Scale(target, target.Bounds(), decoded, bounds, xdraw.Over, nil)
 	var buffer bytes.Buffer
 	mimeType, extension := "image/png", ".png"
+	var err error
 	if sourceMIME == "image/jpeg" {
 		mimeType, extension = "image/jpeg", ".jpg"
 		err = jpeg.Encode(&buffer, target, &jpeg.Options{Quality: 82})
@@ -80,12 +122,16 @@ func generateProcessingVariants(source *os.File, sourceMIME, imageID string, set
 	if sourceMIME == "image/gif" || (!settings.GenerateWebP && !settings.WatermarkEnabled) {
 		return nil, nil
 	}
-	if _, err := source.Seek(0, io.SeekStart); err != nil {
-		return nil, []error{err}
-	}
-	decoded, _, err := image.Decode(source)
+	decoded, err := decodeOrientedImage(source)
 	if err != nil {
 		return nil, []error{fmt.Errorf("解码派生处理源图失败: %w", err)}
+	}
+	return generateProcessingVariantsFromImage(decoded, sourceMIME, imageID, settings)
+}
+
+func generateProcessingVariantsFromImage(decoded image.Image, sourceMIME, imageID string, settings ProcessingSettings) ([]generatedVariant, []error) {
+	if sourceMIME == "image/gif" || (!settings.GenerateWebP && !settings.WatermarkEnabled) {
+		return nil, nil
 	}
 	var generated []generatedVariant
 	var failures []error

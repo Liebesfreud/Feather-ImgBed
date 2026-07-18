@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"io"
 	"net/http"
@@ -397,5 +398,43 @@ func TestPurgeRecordsBackendCreationFailure(t *testing.T) {
 	}
 	if !strings.Contains(purgeError, "simulated backend failure") {
 		t.Fatalf("存储后端失败未写入 purge_error: %q", purgeError)
+	}
+}
+
+func TestPurgeAllProcessesBoundedChunk(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+	now := nowUTC()
+	tx, err := a.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < maxPurgeAllBatch+5; index++ {
+		id := fmt.Sprintf("purge-chunk-%02d", index)
+		if _, err := tx.Exec(`INSERT INTO images(
+			id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,public_url,deleted_at,created_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			id, id, id+".png", id+".png", "local", "local", "image/png", 1, "/files/"+id+".png", now, now); err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder, response := request(t, handler, http.MethodPost, "/api/v1/trash/purge", strings.NewReader(`{"all":true}`), cookie, csrf, "", "application/json")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("分块清理失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var result struct {
+		Total     int  `json:"total"`
+		Remaining int  `json:"remaining"`
+		HasMore   bool `json:"has_more"`
+	}
+	_ = json.Unmarshal(response.Data, &result)
+	if result.Total != maxPurgeAllBatch || result.Remaining != 5 || !result.HasMore {
+		t.Fatalf("分块清理结果错误: %+v", result)
 	}
 }

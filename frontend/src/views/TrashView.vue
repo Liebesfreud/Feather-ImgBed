@@ -82,9 +82,20 @@ async function confirmDanger() {
       await deleteJSON(`/trash/${action.item.id}`)
       toast('图片已永久删除')
     } else {
-      const body = action.kind === 'selected' ? { ids: [...selected.value] } : { all: true }
-      await postJSON('/trash/purge', body)
-      toast(action.kind === 'selected' ? '批量清理已完成' : '回收站清理已完成')
+      if (action.kind === 'selected') {
+        await postJSON('/trash/purge', { ids: [...selected.value] })
+        toast('批量清理已完成')
+      } else {
+        let removed = 0
+        for (;;) {
+          const result = await postJSON<{ succeeded: number; failed: number; remaining: number }>('/trash/purge', { all: true })
+          removed += result.succeeded
+          if (result.failed || !result.remaining) {
+            toast(result.failed ? `已清理 ${removed} 张，失败项目已保留供重试` : `回收站清理已完成，共删除 ${removed} 张`, result.failed ? 'error' : 'success')
+            break
+          }
+        }
+      }
     }
     clearSelection()
     await load(true)

@@ -1,0 +1,500 @@
+openapi: 3.1.0
+info:
+  title: Feather-ImgBed API
+  version: development
+  description: |
+    Feather-ImgBed 单用户自托管图床 API。业务响应统一使用 envelope，
+    写接口在 Cookie 会话模式下还必须提供 X-CSRF-Token。
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+  - apiToken: []
+tags:
+  - name: Auth
+  - name: Images
+  - name: Organization
+  - name: Storage
+  - name: System
+paths:
+  /auth/status:
+    get:
+      tags: [Auth]
+      summary: 查询初始化和认证状态
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /auth/initialize:
+    post:
+      tags: [Auth]
+      summary: 首次创建管理员
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, site_url]
+              properties:
+                username: { type: string, minLength: 3, maxLength: 64 }
+                password: { type: string, minLength: 10, maxLength: 72 }
+                site_url: { type: string, format: uri }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "409": { $ref: "#/components/responses/Error" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 管理员登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出当前会话
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /auth/password:
+    put:
+      tags: [Auth]
+      summary: 修改管理员密码
+      description: 仅 Cookie 管理员会话可以调用。
+      security:
+        - cookieAuth: []
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "403": { $ref: "#/components/responses/Error" }
+  /tokens:
+    get:
+      tags: [Auth]
+      summary: 查询 API Token
+      x-required-token-scope: settings:admin
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      tags: [Auth]
+      summary: 创建 API Token
+      x-required-token-scope: settings:admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateToken"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+  /tokens/{id}:
+    delete:
+      tags: [Auth]
+      summary: 撤销 API Token
+      x-required-token-scope: settings:admin
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/Error" }
+  /images:
+    get:
+      tags: [Images]
+      summary: 分页查询图片
+      x-required-token-scope: images:read
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: storage_id, in: query, schema: { type: string } }
+        - { name: tag_id, in: query, schema: { type: string } }
+        - { name: album_id, in: query, schema: { type: string } }
+        - { name: favorite, in: query, schema: { type: boolean } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      tags: [Images]
+      summary: 上传一张或多张图片
+      x-required-token-scope: images:upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  oneOf:
+                    - { type: string, format: binary }
+                    - { type: array, items: { type: string, format: binary } }
+                storage_id: { type: string }
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "207": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+  /upload:
+    post:
+      tags: [Images]
+      summary: 上传兼容入口
+      x-required-token-scope: images:upload
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /images/import-url:
+    post:
+      tags: [Images]
+      summary: 从安全校验后的直接 URL 导入图片
+      x-required-token-scope: images:upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                storage_id: { type: string }
+                filename: { type: string, maxLength: 255 }
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+  /images/{id}:
+    get:
+      tags: [Images]
+      summary: 读取图片详情和派生版本
+      x-required-token-scope: images:read
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Organization]
+      summary: 更新图片收藏状态
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    delete:
+      tags: [Images]
+      summary: 将图片移入回收站
+      x-required-token-scope: images:delete
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /images/bulk:
+    post:
+      tags: [Images]
+      summary: 批量收藏或移入回收站
+      description: favorite 需要 images:manage；trash 需要 images:delete。
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /random:
+    get:
+      tags: [Images]
+      summary: 获取随机图片
+      security: []
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [json] } }
+        - { name: storage_id, in: query, schema: { type: string } }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "302": { description: 重定向到图片 }
+        "404": { $ref: "#/components/responses/Error" }
+  /trash:
+    get:
+      tags: [Images]
+      summary: 查询回收站
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /trash/{id}/restore:
+    post:
+      tags: [Images]
+      summary: 恢复图片
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /trash/{id}/file/{kind}:
+    get:
+      tags: [Images]
+      summary: 读取回收站中的本地图片预览
+      x-required-token-scope: images:read
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [original, thumbnail] } }
+      responses:
+        "200":
+          description: 图片二进制内容
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "404": { description: 图片不存在 }
+  /trash/{id}:
+    delete:
+      tags: [Images]
+      summary: 永久删除图片
+      x-required-token-scope: images:delete
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /trash/purge:
+    post:
+      tags: [Images]
+      summary: 分块清理回收站
+      description: all=true 时每次最多处理 25 张，并返回 remaining 与 has_more。
+      x-required-token-scope: images:delete
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "207": { $ref: "#/components/responses/Success" }
+  /tags:
+    get:
+      tags: [Organization]
+      summary: 查询标签
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      tags: [Organization]
+      summary: 创建标签
+      x-required-token-scope: images:manage
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /tags/{id}:
+    put:
+      tags: [Organization]
+      summary: 更新标签
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    delete:
+      tags: [Organization]
+      summary: 删除标签
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /images/{id}/tags:
+    get:
+      tags: [Organization]
+      summary: 查询图片标签
+      x-required-token-scope: images:read
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    put:
+      tags: [Organization]
+      summary: 替换图片标签
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /images/bulk/tags:
+    post:
+      tags: [Organization]
+      summary: 批量添加或移除标签
+      x-required-token-scope: images:manage
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /albums:
+    get:
+      tags: [Organization]
+      summary: 查询相册
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      tags: [Organization]
+      summary: 创建相册
+      x-required-token-scope: images:manage
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /albums/{id}:
+    get:
+      tags: [Organization]
+      summary: 查询相册详情
+      x-required-token-scope: images:read
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    put:
+      tags: [Organization]
+      summary: 更新相册
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    delete:
+      tags: [Organization]
+      summary: 删除相册
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /albums/{id}/images:
+    post:
+      tags: [Organization]
+      summary: 批量加入相册
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /albums/{id}/images/{image_id}:
+    delete:
+      tags: [Organization]
+      summary: 从相册移除图片
+      x-required-token-scope: images:manage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - { name: image_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /storages:
+    get:
+      tags: [Storage]
+      summary: 查询脱敏后的存储配置
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /storages/test:
+    post:
+      tags: [Storage]
+      summary: 测试存储连接
+      x-required-token-scope: settings:admin
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /storages/{id}:
+    put:
+      tags: [Storage]
+      summary: 创建或更新存储
+      x-required-token-scope: settings:admin
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "201": { $ref: "#/components/responses/Success" }
+    delete:
+      tags: [Storage]
+      summary: 删除存储
+      x-required-token-scope: settings:admin
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /settings:
+    get:
+      tags: [System]
+      summary: 查询系统设置
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    put:
+      tags: [System]
+      summary: 更新系统设置
+      x-required-token-scope: settings:admin
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /system:
+    get:
+      tags: [System]
+      summary: 查询版本和系统状态
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: feather_session
+    apiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Feather API Token
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Success:
+      description: 成功
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SuccessEnvelope"
+    Error:
+      description: 请求失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    TokenScope:
+      type: string
+      enum:
+        - images:upload
+        - images:read
+        - images:manage
+        - images:delete
+        - settings:admin
+    CreateToken:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        expires_at: { type: string, format: date-time }
+        scopes:
+          type: array
+          description: 省略时默认仅授予 images:upload。
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/TokenScope" }
+    SuccessEnvelope:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: { const: true }
+        data: {}
+        request_id: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [success, error, request_id]
+      properties:
+        success: { const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+        request_id: { type: string }

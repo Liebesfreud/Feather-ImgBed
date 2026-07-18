@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff } from '@lucide/vue'
+import { SlidersHorizontal, Database, ShieldCheck, Info, Save, Plus, Server, Cloud, Globe2, Send, ChevronDown, Wifi, CheckCircle2, Trash2, KeyRound, Copy, LogOut, LoaderCircle, Eye, EyeOff, RefreshCw } from '@lucide/vue'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import { useAuthStore } from '../stores/auth'
-import type { ApiToken, Settings, StorageRecord } from '../types'
+import type { ApiToken, Settings, StorageRecord, TokenScope } from '../types'
 import {
   linkFormatOptions,
   linkSeparatorOptions,
@@ -24,6 +24,7 @@ import UiTooltip from '../components/ui/UiTooltip.vue'
 const auth = useAuthStore()
 const tab = ref<'base' | 'storage' | 'security' | 'system'>('base')
 const loading = ref(true)
+const loadFailed = ref(false)
 const saving = ref(false)
 const testing = ref('')
 const expanded = ref('')
@@ -32,6 +33,8 @@ const storages = ref<StorageRecord[]>([])
 const tokens = ref<ApiToken[]>([])
 const system = ref({ version: '-', database: '-', enabled_storages: 0 })
 const tokenName = ref('')
+const tokenExpiresAt = ref('')
+const tokenScopes = ref<TokenScope[]>(['images:upload'])
 const newToken = ref('')
 const password = reactive({ current_password: '', new_password: '', confirm: '' })
 const passwordVisible = ref(false)
@@ -76,6 +79,13 @@ const watermarkPositionOptions = [
   { label: '右下角', value: 'bottom-right' },
   { label: '居中', value: 'center' },
 ]
+const tokenScopeOptions: { value: TokenScope; label: string; note: string }[] = [
+  { value: 'images:upload', label: '上传图片', note: '适合 PicGo 和上传脚本' },
+  { value: 'images:read', label: '读取图库', note: '读取图片、存储名称和系统信息' },
+  { value: 'images:manage', label: '整理图库', note: '收藏、标签、相册和恢复' },
+  { value: 'images:delete', label: '删除图片', note: '移入回收站和永久删除' },
+  { value: 'settings:admin', label: '系统管理', note: '完整管理权限，包括存储、设置和 Token' },
+]
 const dangerTitle = computed(() => dangerTarget.value?.kind === 'storage' ? '删除这个存储？' : '撤销这个 Token？')
 const dangerDescription = computed(() => {
   if (!dangerTarget.value) return ''
@@ -87,6 +97,9 @@ const dangerDescription = computed(() => {
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) }
 function setStorageOpen(item: StorageRecord, open: boolean) { if (open) drafts[item.id] = clone(item); expanded.value = open ? item.id : '' }
 function toggleAllowedType(value: string, enabled: boolean) { settings.value.allowed_types = enabled ? [...new Set([...settings.value.allowed_types, value])] : settings.value.allowed_types.filter((item) => item !== value) }
+function toggleTokenScope(value: TokenScope, enabled: boolean) {
+  tokenScopes.value = enabled ? [...new Set([...tokenScopes.value, value])] : tokenScopes.value.filter((item) => item !== value)
+}
 function addStorage() {
   const id = `storage-${Date.now().toString(36)}`
   const item: StorageRecord = { id, name: '新的本地存储', type: 'local', enabled: true, config: {} }
@@ -110,13 +123,32 @@ async function saveStorage(id: string) {
 }
 async function testStorage(id: string) { testing.value = id; try { await postJSON(`/storages/test?storage_id=${encodeURIComponent(id)}`, drafts[id]); toast('连接成功，配置尚未保存') } catch (e) { toast(e instanceof Error ? e.message : '连接失败', 'error') } finally { testing.value = '' } }
 async function deleteStorage(item: StorageRecord) { try { await deleteJSON(`/storages/${item.id}`); storages.value = storages.value.filter((value) => value.id !== item.id); toast('存储已删除') } catch (e) { toast(e instanceof Error ? e.message : '删除失败', 'error') } }
-async function createToken() { if (!tokenName.value.trim()) return; try { const result = await postJSON<{ token: string }>('/tokens', { name: tokenName.value }); newToken.value = result.token; tokenName.value = ''; tokens.value = await api<ApiToken[]>('/tokens'); toast('Token 已创建，请立即复制保存') } catch (e) { toast(e instanceof Error ? e.message : '创建失败', 'error') } }
+async function createToken() {
+  if (!tokenName.value.trim() || !tokenScopes.value.length) {
+    toast('请填写 Token 名称并至少选择一项权限', 'error')
+    return
+  }
+  try {
+    const result = await postJSON<{ token: string }>('/tokens', {
+      name: tokenName.value,
+      scopes: tokenScopes.value,
+      expires_at: tokenExpiresAt.value ? new Date(tokenExpiresAt.value).toISOString() : undefined,
+    })
+    newToken.value = result.token
+    tokenName.value = ''
+    tokenExpiresAt.value = ''
+    tokenScopes.value = ['images:upload']
+    tokens.value = await api<ApiToken[]>('/tokens')
+    toast('Token 已创建，请立即复制保存')
+  } catch (e) { toast(e instanceof Error ? e.message : '创建失败', 'error') }
+}
 async function revokeToken(item: ApiToken) { try { await deleteJSON(`/tokens/${item.id}`); tokens.value = tokens.value.filter((token) => token.id !== item.id); toast('Token 已撤销') } catch (e) { toast(e instanceof Error ? e.message : '撤销失败', 'error') } }
 function requestDanger(target: NonNullable<typeof dangerTarget.value>) { dangerTarget.value = target; dangerOpen.value = true }
 async function confirmDanger() { const target = dangerTarget.value; if (!target) return; dangerBusy.value = true; try { if (target.kind === 'storage') await deleteStorage(target.item); else await revokeToken(target.item) } finally { dangerBusy.value = false; dangerOpen.value = false; dangerTarget.value = null } }
 async function copyToken() { await navigator.clipboard.writeText(newToken.value); toast('Token 已复制') }
 async function changePassword() { if (password.new_password !== password.confirm) { toast('两次输入的新密码不一致', 'error'); return } try { await putJSON('/auth/password', { current_password: password.current_password, new_password: password.new_password }); toast('密码已修改，请重新登录'); auth.reset() } catch (e) { toast(e instanceof Error ? e.message : '修改失败', 'error') } }
 function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '从未使用' }
+function tokenScopeLabel(scope: TokenScope) { return tokenScopeOptions.find((item) => item.value === scope)?.label || scope }
 
 watch([copyFormat, autoCopy, copySeparator], () => {
   writeCopyPreferences({
@@ -126,21 +158,35 @@ watch([copyFormat, autoCopy, copySeparator], () => {
   })
 })
 
-onMounted(async () => {
-  try { const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')]); settings.value = { ...result[0], processing: normalizeProcessingSettings(result[0].processing) }; storages.value = result[1]; tokens.value = result[2]; system.value = result[3]; storages.value.forEach((item) => drafts[item.id] = clone(item)) } finally { loading.value = false }
-})
+async function loadSettingsData() {
+  loading.value = true
+  loadFailed.value = false
+  try {
+    const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')])
+    settings.value = { ...result[0], processing: normalizeProcessingSettings(result[0].processing) }
+    storages.value = result[1]
+    tokens.value = result[2]
+    system.value = result[3]
+    storages.value.forEach((item) => drafts[item.id] = clone(item))
+  } catch (error) {
+    loadFailed.value = true
+    toast(error instanceof Error ? error.message : '设置读取失败', 'error')
+  } finally { loading.value = false }
+}
+onMounted(() => void loadSettingsData())
 </script>
 
 <template>
   <TabsRoot v-model="tab" class="settings-layout" orientation="vertical">
     <TabsList class="settings-nav" aria-label="系统设置分类"><h2>系统设置</h2><TabsTrigger v-for="item in tabs" :key="item.id" :value="item.id" :class="{ active: tab === item.id }"><component :is="item.icon" :size="20"/>{{ item.label }}</TabsTrigger><div class="feather-decor">⌁</div></TabsList>
     <div v-if="loading" class="settings-main gallery-state"><LoaderCircle class="spin" :size="28"/>正在读取设置…</div>
+    <div v-else-if="loadFailed" class="settings-main gallery-state"><Info :size="36"/><h2>系统设置暂时无法读取</h2><p>没有使用本地默认值覆盖服务器配置。</p><button class="soft-button" @click="loadSettingsData"><RefreshCw :size="17"/>重新加载</button></div>
     <template v-else>
       <TabsContent value="base" class="settings-main">
         <header class="settings-heading"><div><h1>基础设置</h1><p>调整站点信息、上传限制与文件命名方式。</p></div><button class="primary-button" :disabled="saving" @click="saveSettings"><Save :size="18"/>保存设置</button></header>
         <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
         <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong><small>关闭时将按 SHA-256 自动去重</small></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
-        <section class="form-section processing-settings"><h2>图片处理</h2><p class="section-note">原图始终保留。WebP 和水印图会作为独立派生版本生成，处理失败不影响原图上传。</p><label class="switch-row"><span><strong>生成 WebP 版本</strong><small>为支持的静态图片额外生成 WebP 派生文件</small></span><UiSwitch v-model="settings.processing.generate_webp" aria-label="生成 WebP 版本" /></label><div class="form-grid processing-fields"><label>WebP 质量<input v-model.number="settings.processing.webp_quality" type="number" min="1" max="100" :disabled="!settings.processing.generate_webp"></label></div><label class="switch-row"><span><strong>生成水印版本</strong><small>保留无水印原图，同时生成带文字水印的派生文件</small></span><UiSwitch v-model="settings.processing.watermark_enabled" aria-label="生成水印版本" /></label><div class="form-grid processing-fields"><label>水印文字<input v-model.trim="settings.processing.watermark_text" maxlength="200" :disabled="!settings.processing.watermark_enabled" placeholder="例如 Feather ImgBed"></label><label>水印位置<UiSelect v-model="settings.processing.watermark_position" :options="watermarkPositionOptions" aria-label="水印位置" /></label></div></section>
+        <section class="form-section processing-settings"><h2>图片处理</h2><p class="section-note">派生版本不会覆盖原图；启用隐私清理时，静态图片会在入库前按正确方向重新编码。</p><label class="switch-row"><span><strong>清理 EXIF 与定位元数据</strong><small>移除相机、GPS 等隐私信息，并应用 JPEG 方向；GIF 为保留动画不会重编码</small></span><UiSwitch v-model="settings.processing.strip_metadata" aria-label="清理图片元数据" /></label><label class="switch-row"><span><strong>生成 WebP 版本</strong><small>为支持的静态图片额外生成 WebP 派生文件</small></span><UiSwitch v-model="settings.processing.generate_webp" aria-label="生成 WebP 版本" /></label><div class="form-grid processing-fields"><label>WebP 质量<input v-model.number="settings.processing.webp_quality" type="number" min="1" max="100" :disabled="!settings.processing.generate_webp"></label></div><label class="switch-row"><span><strong>生成水印版本</strong><small>保留无水印原图，同时生成带文字水印的派生文件</small></span><UiSwitch v-model="settings.processing.watermark_enabled" aria-label="生成水印版本" /></label><div class="form-grid processing-fields"><label>水印文字<input v-model.trim="settings.processing.watermark_text" maxlength="200" :disabled="!settings.processing.watermark_enabled" placeholder="例如 Feather ImgBed"></label><label>水印位置<UiSelect v-model="settings.processing.watermark_position" :options="watermarkPositionOptions" aria-label="水印位置" /></label></div></section>
         <section class="form-section"><h2>复制偏好</h2><div class="form-grid"><label>默认链接格式<UiSelect v-model="copyFormat" :options="linkFormatOptions" aria-label="默认链接格式" /></label><label>批量链接分隔方式<UiSelect v-model="copySeparator" :options="linkSeparatorOptions" aria-label="批量链接分隔方式" /></label></div><label class="switch-row"><span><strong>上传完成后自动复制</strong><small>单图立即复制；批量上传在全部任务结束后一次复制成功项</small></span><UiSwitch v-model="autoCopy" aria-label="上传完成后自动复制" /></label></section>
       </TabsContent>
 
@@ -155,12 +201,17 @@ onMounted(async () => {
       <TabsContent value="security" class="settings-main">
         <header class="settings-heading"><div><h1>安全与令牌</h1><p>修改管理员密码，并管理第三方上传工具使用的 API Token。</p></div></header>
         <section class="form-section"><h2>修改密码</h2><form class="form-grid" @submit.prevent="changePassword"><label>当前密码<input v-model="password.current_password" type="password" required></label><label>新密码<input v-model="password.new_password" type="password" minlength="10" required></label><label>确认新密码<input v-model="password.confirm" type="password" minlength="10" required></label><button class="soft-button form-button"><Save :size="17"/>更新密码</button></form></section>
-        <section class="form-section"><h2>API Token</h2><p class="section-note">Token 原文仅在创建时展示一次，请妥善保存。</p><div class="token-create"><input v-model="tokenName" placeholder="Token 用途名称，例如 PicGo"><button class="primary-button" @click="createToken"><Plus :size="17"/>创建 Token</button></div><div v-if="newToken" class="new-token"><KeyRound :size="19"/><code>{{ newToken }}</code><button @click="copyToken"><Copy :size="17"/>复制</button></div><div class="token-list"><article v-for="item in tokens" :key="item.id"><span class="storage-icon"><KeyRound :size="19"/></span><div><strong>{{ item.name }}</strong><small>创建于 {{ formatDate(item.created_at) }} · {{ item.last_used_at ? `最近使用 ${formatDate(item.last_used_at)}` : '从未使用' }}</small></div><button class="text-button danger" @click="requestDanger({ kind: 'token', item })">撤销</button></article><p v-if="!tokens.length" class="section-note">还没有 API Token。</p></div></section>
+        <section class="form-section"><h2>API Token</h2><p class="section-note">Token 原文仅在创建时展示一次。普通上传工具建议只授予“上传图片”。</p>
+          <div class="token-create"><input v-model="tokenName" placeholder="Token 用途名称，例如 PicGo"><input v-model="tokenExpiresAt" type="datetime-local" aria-label="Token 过期时间"><button class="primary-button" @click="createToken"><Plus :size="17"/>创建 Token</button></div>
+          <div class="checkbox-row token-scope-list"><span>Token 权限</span><label v-for="scope in tokenScopeOptions" :key="scope.value" :title="scope.note"><UiCheckbox :model-value="tokenScopes.includes(scope.value)" :aria-label="scope.label" @update:model-value="toggleTokenScope(scope.value, $event)" />{{ scope.label }}</label></div>
+          <div v-if="newToken" class="new-token"><KeyRound :size="19"/><code>{{ newToken }}</code><button @click="copyToken"><Copy :size="17"/>复制</button></div>
+          <div class="token-list"><article v-for="item in tokens" :key="item.id"><span class="storage-icon"><KeyRound :size="19"/></span><div><strong>{{ item.name }}</strong><small>{{ item.scopes.map(tokenScopeLabel).join('、') }} · {{ item.expires_at ? `到期 ${formatDate(item.expires_at)}` : '永不过期' }} · {{ item.last_used_at ? `最近使用 ${formatDate(item.last_used_at)}` : '从未使用' }}</small></div><button class="text-button danger" @click="requestDanger({ kind: 'token', item })">撤销</button></article><p v-if="!tokens.length" class="section-note">还没有 API Token。</p></div>
+        </section>
       </TabsContent>
 
       <TabsContent value="system" class="settings-main">
         <header class="settings-heading"><div><h1>系统信息</h1><p>查看当前服务状态与版本信息。</p></div></header>
-        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>当前版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>前端版本</dt><dd>v0.1.2</dd></div></dl></section>
+        <section class="system-panel"><div><span class="system-icon"><CheckCircle2 :size="23"/></span><p><strong>服务运行正常</strong><small>数据库和核心服务均可用</small></p></div><dl><div><dt>应用版本</dt><dd>{{ system.version }}</dd></div><div><dt>数据库状态</dt><dd>{{ system.database === 'ok' ? '正常' : system.database }}</dd></div><div><dt>已启用存储</dt><dd>{{ system.enabled_storages }} 个</dd></div><div><dt>界面资源版本</dt><dd>{{ system.version }}</dd></div></dl></section>
         <section class="form-section danger-zone"><h2>会话</h2><p>退出当前浏览器上的管理员会话。</p><button class="soft-button danger" @click="auth.logout"><LogOut :size="17"/>退出登录</button></section>
       </TabsContent>
     </template>

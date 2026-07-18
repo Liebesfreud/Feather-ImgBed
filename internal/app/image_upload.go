@@ -22,7 +22,7 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-const maxImagePixels = 100_000_000
+const maxImagePixels = 40_000_000
 
 type uploadResult struct {
 	Success bool      `json:"success"`
@@ -169,7 +169,22 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxImagePixels {
 		return Image{}, &apiError{Code: "IMAGE_TOO_LARGE", Message: "图片像素尺寸超过安全限制"}
 	}
-	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+	var hash string
+	if settings.Processing.StripMetadata && mime != "image/gif" {
+		written, config, err = sanitizeImageFile(temp, mime)
+		if err != nil {
+			return Image{}, &apiError{Code: "METADATA_STRIP_FAILED", Message: "无法安全清理图片元数据"}
+		}
+		if written > settings.MaxFileSize {
+			return Image{}, &apiError{Code: "FILE_TOO_LARGE", Message: "清理元数据后的图片超过文件大小限制"}
+		}
+		hash, err = hashImageFile(temp)
+		if err != nil {
+			return Image{}, &apiError{Code: "FILE_READ_ERROR", Message: "读取清理后的图片失败"}
+		}
+	} else {
+		hash = fmt.Sprintf("%x", hasher.Sum(nil))
+	}
 	if !settings.AllowDuplicates {
 		if existing, duplicateErr := a.findDuplicate(ctx, hash, record.ID); duplicateErr == nil {
 			return existing, nil
@@ -194,28 +209,37 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 	}
 
 	variants := make([]*ImageVariant, 0, 3)
-	if generated, generateErr := generateThumbnail(temp, mime, id); generateErr != nil {
-		a.logger.Warn("缩略图生成失败，保留原图", "request_id", requestID, "image_id", id, "error", generateErr)
-	} else {
-		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, "thumbnail", img.CreatedAt, generated)
-		if storeErr != nil {
-			a.logger.Warn("缩略图写入失败，保留原图", "request_id", requestID, "image_id", id, "error", storeErr)
+	if a.acquireProcessingSlot(ctx) {
+		decoded, decodeErr := decodeOrientedImage(temp)
+		if decodeErr != nil {
+			a.logger.Warn("图片派生解码失败，保留原图", "request_id", requestID, "image_id", id, "error", decodeErr)
 		} else {
-			variants = append(variants, variant)
-			img.ThumbnailURL = variant.PublicURL
+			img.Width, img.Height = decoded.Bounds().Dx(), decoded.Bounds().Dy()
+			if generated, generateErr := generateThumbnailFromImage(decoded, mime, id); generateErr != nil {
+				a.logger.Warn("缩略图生成失败，保留原图", "request_id", requestID, "image_id", id, "error", generateErr)
+			} else {
+				variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, "thumbnail", img.CreatedAt, generated)
+				if storeErr != nil {
+					a.logger.Warn("缩略图写入失败，保留原图", "request_id", requestID, "image_id", id, "error", storeErr)
+				} else {
+					variants = append(variants, variant)
+					img.ThumbnailURL = variant.PublicURL
+				}
+			}
+			generatedVariants, processingFailures := generateProcessingVariantsFromImage(decoded, mime, id, settings.Processing)
+			for _, processingErr := range processingFailures {
+				a.logger.Warn("图片派生处理失败，保留原图", "request_id", requestID, "image_id", id, "error", processingErr)
+			}
+			for _, generated := range generatedVariants {
+				variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, generated.Kind, img.CreatedAt, generated.Image)
+				if storeErr != nil {
+					a.logger.Warn("图片派生版本写入失败，保留原图", "request_id", requestID, "image_id", id, "kind", generated.Kind, "error", storeErr)
+					continue
+				}
+				variants = append(variants, variant)
+			}
 		}
-	}
-	generatedVariants, processingFailures := generateProcessingVariants(temp, mime, id, settings.Processing)
-	for _, processingErr := range processingFailures {
-		a.logger.Warn("图片派生处理失败，保留原图", "request_id", requestID, "image_id", id, "error", processingErr)
-	}
-	for _, generated := range generatedVariants {
-		variant, storeErr := a.storeGeneratedVariant(ctx, backend, record, settings.SiteURL, id, generated.Kind, img.CreatedAt, generated.Image)
-		if storeErr != nil {
-			a.logger.Warn("图片派生版本写入失败，保留原图", "request_id", requestID, "image_id", id, "kind", generated.Kind, "error", storeErr)
-			continue
-		}
-		variants = append(variants, variant)
+		a.releaseProcessingSlot()
 	}
 
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -248,6 +272,35 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 		return Image{}, &apiError{Code: "DATABASE_ERROR", Message: "图片信息保存失败，已尝试回滚上传"}
 	}
 	return img, nil
+}
+
+func hashImageFile(file *os.File) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+}
+
+func (a *App) acquireProcessingSlot(ctx context.Context) bool {
+	select {
+	case a.processingSlots <- struct{}{}:
+		return true
+	default:
+	}
+	select {
+	case a.processingSlots <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (a *App) releaseProcessingSlot() {
+	<-a.processingSlots
 }
 
 func (a *App) storeGeneratedVariant(

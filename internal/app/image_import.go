@@ -49,7 +49,7 @@ func newSafeURLFetcher() safeURLFetcher {
 
 func (a *App) registerImportRoutes() {
 	a.mux.Handle("POST /api/v1/images/import-url",
-		a.requireAuth(a.limitHandler("import-url", 15, time.Minute, http.HandlerFunc(a.importImageURL))))
+		a.protect(tokenScopeUpload, a.limitHandler("import-url", 15, time.Minute, http.HandlerFunc(a.importImageURL))))
 }
 
 func (a *App) importImageURL(w http.ResponseWriter, r *http.Request) {

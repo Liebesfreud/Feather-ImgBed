@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -147,12 +148,20 @@ func (a *App) authenticate(r *http.Request) (principal, bool) {
 	authorization := r.Header.Get("Authorization")
 	if strings.HasPrefix(authorization, "Bearer ") {
 		token := strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
-		var id string
+		var id, rawScopes string
 		var expires sql.NullString
-		err := a.db.QueryRowContext(r.Context(), "SELECT id,expires_at FROM api_tokens WHERE token_hash=?", hashToken(token)).Scan(&id, &expires)
+		err := a.db.QueryRowContext(r.Context(), "SELECT id,expires_at,scopes FROM api_tokens WHERE token_hash=?", hashToken(token)).Scan(&id, &expires, &rawScopes)
 		if err == nil && (!expires.Valid || expires.String > nowUTC()) {
 			_, _ = a.db.ExecContext(r.Context(), "UPDATE api_tokens SET last_used_at=? WHERE id=?", nowUTC(), id)
-			return principal{}, true
+			var scopes []string
+			if json.Unmarshal([]byte(rawScopes), &scopes) != nil {
+				return principal{}, false
+			}
+			p := principal{TokenID: id, Scopes: make(map[string]bool, len(scopes))}
+			for _, scope := range scopes {
+				p.Scopes[scope] = true
+			}
+			return p, true
 		}
 	}
 	cookie, err := r.Cookie(sessionCookie)
@@ -166,6 +175,24 @@ func (a *App) authenticate(r *http.Request) (principal, bool) {
 	}
 	p.ViaSession = true
 	return p, true
+}
+
+func (p principal) hasScope(scope string) bool {
+	if p.ViaSession {
+		return true
+	}
+	return p.Scopes[tokenScopeAdmin] || p.Scopes[scope]
+}
+
+func (a *App) protect(scope string, next http.Handler) http.Handler {
+	return a.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, _ := r.Context().Value(principalKey).(principal)
+		if !p.hasScope(scope) {
+			writeError(w, r, http.StatusForbidden, "TOKEN_SCOPE_REQUIRED", "当前 API Token 没有执行此操作的权限")
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
 }
 
 func (a *App) requireAuth(next http.Handler) http.Handler {
@@ -234,7 +261,7 @@ func (a *App) changePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) listTokens(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), "SELECT id,name,last_used_at,expires_at,created_at FROM api_tokens ORDER BY created_at DESC")
+	rows, err := a.db.QueryContext(r.Context(), "SELECT id,name,last_used_at,expires_at,scopes,created_at FROM api_tokens ORDER BY created_at DESC")
 	if err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "读取 Token 失败")
 		return
@@ -242,13 +269,18 @@ func (a *App) listTokens(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := make([]map[string]any, 0)
 	for rows.Next() {
-		var id, name, created string
+		var id, name, rawScopes, created string
 		var last, expires sql.NullString
-		if err := rows.Scan(&id, &name, &last, &expires, &created); err != nil {
+		if err := rows.Scan(&id, &name, &last, &expires, &rawScopes, &created); err != nil {
 			writeError(w, r, 500, "DATABASE_ERROR", "读取 Token 失败")
 			return
 		}
-		items = append(items, map[string]any{"id": id, "name": name, "last_used_at": nullable(last), "expires_at": nullable(expires), "created_at": created})
+		var scopes []string
+		if json.Unmarshal([]byte(rawScopes), &scopes) != nil {
+			writeError(w, r, 500, "DATABASE_ERROR", "Token 权限配置无效")
+			return
+		}
+		items = append(items, map[string]any{"id": id, "name": name, "last_used_at": nullable(last), "expires_at": nullable(expires), "scopes": scopes, "created_at": created})
 	}
 	if err := rows.Err(); err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "读取 Token 失败")
@@ -266,8 +298,9 @@ func nullable(value sql.NullString) any {
 
 func (a *App) createToken(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name      string `json:"name"`
-		ExpiresAt string `json:"expires_at"`
+		Name      string   `json:"name"`
+		ExpiresAt string   `json:"expires_at"`
+		Scopes    []string `json:"scopes"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -285,19 +318,46 @@ func (a *App) createToken(w http.ResponseWriter, r *http.Request) {
 			input.ExpiresAt = formatTime(t)
 		}
 	}
-	raw, _ := randomToken(32)
-	id, _ := randomToken(12)
+	if len(input.Scopes) == 0 {
+		input.Scopes = []string{tokenScopeUpload}
+	}
+	cleanScopes := make([]string, 0, len(input.Scopes))
+	seenScopes := make(map[string]bool, len(input.Scopes))
+	for _, scope := range input.Scopes {
+		if !allowedTokenScopes[scope] {
+			writeError(w, r, 400, "INVALID_TOKEN_SCOPE", "Token 包含不支持的权限")
+			return
+		}
+		if !seenScopes[scope] {
+			seenScopes[scope] = true
+			cleanScopes = append(cleanScopes, scope)
+		}
+	}
+	input.Scopes = cleanScopes
+	raw, err := randomToken(32)
+	if err != nil {
+		writeError(w, r, 500, "TOKEN_GENERATION_FAILED", "创建 Token 失败")
+		return
+	}
+	id, err := randomToken(12)
+	if err != nil {
+		writeError(w, r, 500, "TOKEN_GENERATION_FAILED", "创建 Token 失败")
+		return
+	}
 	id = "tok_" + id
 	var expires any
 	if input.ExpiresAt != "" {
 		expires = input.ExpiresAt
 	}
-	_, err := a.db.ExecContext(r.Context(), "INSERT INTO api_tokens(id,name,token_hash,expires_at,created_at) VALUES(?,?,?,?,?)", id, input.Name, hashToken(raw), expires, nowUTC())
+	scopesJSON, err := json.Marshal(input.Scopes)
+	if err == nil {
+		_, err = a.db.ExecContext(r.Context(), "INSERT INTO api_tokens(id,name,token_hash,expires_at,scopes,created_at) VALUES(?,?,?,?,?,?)", id, input.Name, hashToken(raw), expires, string(scopesJSON), nowUTC())
+	}
 	if err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "创建 Token 失败")
 		return
 	}
-	writeData(w, r, 201, map[string]any{"id": id, "name": input.Name, "token": raw, "expires_at": expires})
+	writeData(w, r, 201, map[string]any{"id": id, "name": input.Name, "token": raw, "expires_at": expires, "scopes": input.Scopes})
 }
 
 func (a *App) deleteToken(w http.ResponseWriter, r *http.Request) {

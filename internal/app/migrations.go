@@ -16,6 +16,8 @@ var migrations = []migration{
 	{Version: 2, Up: migrateV2},
 	{Version: 3, Up: migrateV3},
 	{Version: 4, Up: migrateV4},
+	{Version: 5, Up: migrateV5},
+	{Version: 6, Up: migrateV6},
 }
 
 var schemaVersion = migrations[len(migrations)-1].Version
@@ -139,5 +141,37 @@ func migrateV4(ctx context.Context, tx *sql.Tx) error {
 			PRIMARY KEY(album_id, image_id)
 		)`,
 		`CREATE INDEX idx_album_images_order ON album_images(album_id, position, added_at)`,
+	)
+}
+
+func migrateV5(ctx context.Context, tx *sql.Tx) error {
+	// Existing tokens retain their previous full-access behavior. Newly created
+	// tokens default to a least-privilege upload scope in the API handler.
+	return execMigration(ctx, tx,
+		`ALTER TABLE api_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT '["settings:admin"]'`,
+	)
+}
+
+func migrateV6(ctx context.Context, tx *sql.Tx) error {
+	return execMigration(ctx, tx,
+		`CREATE VIRTUAL TABLE image_search USING fts5(
+			original_name,
+			content='images',
+			content_rowid='rowid',
+			tokenize='trigram'
+		)`,
+		`CREATE TRIGGER images_search_insert AFTER INSERT ON images BEGIN
+			INSERT INTO image_search(rowid,original_name) VALUES(new.rowid,new.original_name);
+		END`,
+		`CREATE TRIGGER images_search_delete AFTER DELETE ON images BEGIN
+			INSERT INTO image_search(image_search,rowid,original_name)
+			VALUES('delete',old.rowid,old.original_name);
+		END`,
+		`CREATE TRIGGER images_search_update AFTER UPDATE OF original_name ON images BEGIN
+			INSERT INTO image_search(image_search,rowid,original_name)
+			VALUES('delete',old.rowid,old.original_name);
+			INSERT INTO image_search(rowid,original_name) VALUES(new.rowid,new.original_name);
+		END`,
+		`INSERT INTO image_search(image_search) VALUES('rebuild')`,
 	)
 }

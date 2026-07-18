@@ -80,6 +80,7 @@ export interface Settings {
 export interface ProcessingSettings {
   generate_webp: boolean
   webp_quality: number
+  strip_metadata: boolean
   watermark_enabled: boolean
   watermark_text: string
   watermark_position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'
@@ -88,7 +89,10 @@ export interface ProcessingSettings {
 export interface ApiToken {
   id: string
   name: string
+  scopes: TokenScope[]
   last_used_at: string | null
   expires_at: string | null
   created_at: string
 }
+
+export type TokenScope = 'images:upload' | 'images:read' | 'images:manage' | 'images:delete' | 'settings:admin'

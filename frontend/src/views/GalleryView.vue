@@ -24,6 +24,7 @@ const tags = ref<TagItem[]>([])
 const albums = ref<Album[]>([])
 const cursor = ref('')
 const loading = ref(true)
+const initialLoadFailed = ref(false)
 const loadingMore = ref(false)
 const failed = ref(false)
 const search = ref('')
@@ -304,10 +305,20 @@ watch(search, () => {
 })
 watch([storage, from, to, order, favoriteOnly, tagFilter], () => void syncRoute(), { flush: 'post' })
 watch(() => route.fullPath, () => void applyRouteAndLoad())
-onMounted(async () => {
+async function initializeGallery() {
+  initialLoadFailed.value = false
+  try {
+    ;[storages.value, tags.value, albums.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<TagItem[]>('/tags'), api<Album[]>('/albums')])
+    await applyRouteAndLoad()
+  } catch (error) {
+    initialLoadFailed.value = true
+    loading.value = false
+    toast(error instanceof Error ? error.message : '图库初始化失败', 'error')
+  }
+}
+onMounted(() => {
   window.addEventListener('keydown', onKey)
-  ;[storages.value, tags.value, albums.value] = await Promise.all([api<StorageRecord[]>('/storages'), api<TagItem[]>('/tags'), api<Album[]>('/albums')])
-  await applyRouteAndLoad()
+  void initializeGallery()
 })
 onBeforeUnmount(() => {
   clearTimeout(searchTimer)
@@ -319,6 +330,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="content-stack gallery-view">
     <ImageManagementNav />
+    <div v-if="initialLoadFailed" class="gallery-state load-error-banner"><ImageOff :size="36"/><h2>图库暂时无法初始化</h2><button class="soft-button" @click="initializeGallery"><RefreshCw :size="17"/>重新加载</button></div>
     <header class="page-heading gallery-heading"><h1>图片管理</h1><span v-if="images.length">{{ images.length }} 张图片</span></header>
     <div class="gallery-toolbar">
       <label class="search-control"><Search :size="18"/><input v-model.trim="search" placeholder="搜索图片名称" aria-label="搜索图片名称"></label>
