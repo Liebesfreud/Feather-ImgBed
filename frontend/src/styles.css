@@ -25,6 +25,7 @@
   --shadow-sm: 0 1px 3px rgba(24,34,27,.10), 0 1px 2px rgba(24,34,27,.06);
   --shadow-md: 0 10px 30px rgba(24,34,27,.12);
   --shadow-lg: 0 24px 64px rgba(24,34,27,.20);
+  --app-content-width: min(66.6667vw, 1440px);
   font-family: "DM Sans", system-ui, sans-serif;
   font-synthesis: none;
 }
@@ -76,11 +77,11 @@ code { font-family: "JetBrains Mono", monospace }
 .app-loader { position: relative; z-index: 1; min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 16px; background: color-mix(in srgb,var(--bg) 90%,transparent); color: var(--muted) }
 .app-loader svg { color: var(--primary); animation: float 1.8s ease-in-out infinite }
 .app-shell { position: relative; z-index: 1; min-height: 100vh; padding-top: 96px; background: transparent }
-.topbar { position: fixed; z-index: 50; inset: 16px 24px auto; height: 64px; display: grid; grid-template-columns: minmax(190px,1fr) auto minmax(190px,1fr); align-items: center; gap: 24px; padding: 0 20px; border: 1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius: 18px; background: var(--topbar); box-shadow: 0 10px 34px rgba(17,24,19,.12), inset 0 1px rgba(255,255,255,.16); -webkit-backdrop-filter: blur(20px) saturate(145%); backdrop-filter: blur(20px) saturate(145%) }
+.topbar { position: fixed; z-index: 50; top: 16px; left: 50%; width: var(--app-content-width); height: 64px; display: grid; grid-template-columns: minmax(190px,1fr) auto minmax(190px,1fr); align-items: center; gap: 24px; padding: 0 20px; transform: translateX(-50%); border: 1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius: 18px; background: var(--topbar); box-shadow: 0 10px 34px rgba(17,24,19,.12), inset 0 1px rgba(255,255,255,.16); -webkit-backdrop-filter: blur(20px) saturate(145%); backdrop-filter: blur(20px) saturate(145%) }
 .dark .topbar { box-shadow: 0 14px 40px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.06) }
 .brand { width: max-content; height: 48px; display: flex; align-items: center; gap: 11px; font-size: 20px; font-weight: 700; letter-spacing: -.03em }
 .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--radius); color: var(--on-primary); background: var(--primary) }
-.main-nav { display: flex; align-items: center; gap: 5px; padding: 4px; border-radius: var(--radius); background: var(--raised) }
+.main-nav { display: flex; align-items: center; gap: 5px }
 .main-nav a { position: relative; isolation: isolate; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: var(--radius); color: var(--neutral); font-size: 13px; font-weight: 700; white-space: nowrap; transition: color .22s, transform .22s }
 .main-nav a::before { content: ""; position: absolute; z-index: 0; inset: 0; border-radius: inherit; background: var(--surface); box-shadow: var(--shadow-sm); opacity: 0; transform: scale(.84); transition: opacity .2s ease, transform .3s cubic-bezier(.2,.8,.2,1) }
 .main-nav a>svg, .main-nav a>span { position: relative; z-index: 1 }
@@ -104,16 +105,22 @@ code { font-family: "JetBrains Mono", monospace }
 .theme-button:not(.topbar-control) { width: 42px; height: 42px; display: grid; place-items: center; flex: none; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); background: var(--surface); transition: color .18s, background .18s, transform .18s }
 .theme-button:not(.topbar-control):hover { color: var(--primary); background: var(--raised); transform: rotate(8deg) }
 .auth-theme-button { position: fixed; z-index: 20; top: 22px; right: 22px }
-.page { width: min(100% - 64px, 1440px); margin: 0 auto; padding: 48px 0 72px }
+.page { width: var(--app-content-width); margin: 0 auto; padding: 48px 0 72px }
+.route-page { min-width: 0 }
+.page-fade-enter-active, .page-fade-leave-active { transition: opacity .16s ease, transform .16s ease }
+.page-fade-enter-from { opacity: 0; transform: translateY(5px) }
+.page-fade-leave-to { opacity: 0; transform: translateY(-3px) }
 .content-stack { display: flex; flex-direction: column; gap: 32px }
 .page-heading, .settings-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px }
 .page-heading h1, .settings-heading h1 { font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -.02em }
 .page-heading p, .settings-heading p { margin-top: 7px; color: var(--muted); line-height: 22px }
-.management-nav { width: max-content; max-width: 100%; display: flex; align-items: center; gap: 4px; padding: 4px; overflow-x: auto; border-radius: var(--radius); background: var(--raised) }
-.management-nav a { height: 38px; display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 0 14px; border-radius: var(--radius); color: var(--muted); font-size: 12px; font-weight: 700; transition: color .18s, background .18s, box-shadow .18s }
-.management-nav a:hover { color: var(--text) }
+.management-nav { position: fixed; z-index: 55; bottom: max(20px,env(safe-area-inset-bottom)); left: 50%; width: max-content; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 4px; padding: 6px; overflow-x: auto; transform: translateX(-50%); border: 1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius: 16px; background: var(--topbar); box-shadow: 0 12px 34px rgba(17,24,19,.18); -webkit-backdrop-filter: blur(18px) saturate(145%); backdrop-filter: blur(18px) saturate(145%) }
+.dark .management-nav { box-shadow: 0 14px 36px rgba(0,0,0,.42) }
+.management-nav a { height: 40px; display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 0 16px; border-radius: var(--radius); color: var(--muted); font-size: 12px; font-weight: 700; transition: color .18s, background .18s, box-shadow .18s, transform .18s }
+.management-nav a:hover { color: var(--text); transform: translateY(-1px) }
 .management-nav a.active { color: var(--text); background: var(--surface); box-shadow: var(--shadow-sm) }
 .management-nav a.active svg { color: var(--primary) }
+.page:has(.management-nav) { padding-bottom: 112px }
 
 .primary-button, .soft-button, .load-more { min-height: 40px; padding: 0 24px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .04em; transition: background .18s, color .18s, transform .18s, border-color .18s }
 .primary-button { border: 0; color: var(--on-primary); background: var(--primary) }
@@ -180,6 +187,8 @@ code { font-family: "JetBrains Mono", monospace }
 .tag-picker-list label>small { color: var(--muted) }
 
 /* Upload */
+.upload-heading { align-items: center; margin-bottom: -12px }
+.upload-heading .storage-select { height: 44px }
 .upload-mode-switch { width: max-content; display: flex; gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--raised) }
 .upload-mode-switch button { height: 36px; padding: 0 16px; border: 0; border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 12px; font-weight: 700 }
 .upload-mode-switch button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm) }
@@ -197,6 +206,13 @@ code { font-family: "JetBrains Mono", monospace }
 .url-import-panel input { width: 100%; height: 44px; padding: 0 13px; border: 1px solid transparent; border-radius: var(--radius); background: var(--raised) }
 .url-import-panel input:focus { border-color: var(--text) }
 .url-import-panel .primary-button { margin-top: 8px }
+.upload-stats { min-height: 82px; display: grid; grid-template-columns: minmax(150px,.7fr) minmax(0,2.3fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface) }
+.upload-stats>header { display: flex; align-items: center; padding: 16px 20px }
+.upload-stats h2 { font-size: 14px }
+.upload-stats dl { margin: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)) }
+.upload-stats dl>div { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 13px 20px; border-left: 1px solid var(--line) }
+.upload-stats dt { color: var(--muted); font-size: 11px }
+.upload-stats dd { margin: 0; color: var(--text); font-size: 21px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums }
 .url-import-results { margin-top: -8px }
 .queue-panel { overflow: hidden; border-radius: var(--radius); background: var(--surface) }
 .queue-head { min-height: 64px; padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted) }
@@ -288,6 +304,7 @@ code { font-family: "JetBrains Mono", monospace }
 .variant-select .ui-select-trigger { height: 34px; padding-inline: 9px; background: var(--raised); font-size: 11px }
 .preview-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px }.preview-actions .danger { margin-left: 8px }
 .batch-bar { position: fixed; z-index: 45; right: 24px; bottom: 24px; left: 24px; width: max-content; max-width: calc(100% - 48px); min-height: 58px; margin: auto; padding: 8px 10px 8px 18px; display: flex; align-items: center; gap: 5px; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb,var(--surface) 94%,transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px) }
+.page:has(.management-nav) .batch-bar { bottom: 96px }
 .batch-bar strong { flex: none; margin-right: 8px; font-size: 13px }
 .batch-bar button { height: 38px; padding: 0 11px; display: inline-flex; align-items: center; flex: none; gap: 6px; border: 0; border-radius: var(--radius); background: transparent; color: var(--neutral); font-size: 12px; font-weight: 700 }
 .batch-bar button:hover { color: var(--text); background: var(--raised) }
@@ -416,12 +433,21 @@ code { font-family: "JetBrains Mono", monospace }
 @keyframes nav-icon-in { 0% { opacity: .45; transform: translateY(3px) scale(.82) } 70% { transform: translateY(-1px) scale(1.06) } 100% { opacity: 1; transform: none } }
 @keyframes nav-label-in { from { opacity: .55; transform: translateY(2px) } to { opacity: 1; transform: none } }
 
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active, .page-fade-leave-active { transition: none }
+}
+
 @media (max-width: 1100px) {
-  .topbar { grid-template-columns: auto 1fr auto; inset-inline: 16px; padding: 0 18px }
+  .topbar { right: 16px; left: 16px; width: auto; grid-template-columns: auto 1fr auto; padding: 0 18px; transform: none }
+  .page { width: min(100% - 64px, 1000px) }
   .main-nav { justify-self: center }
   .main-nav a { padding-inline: 12px }
   .image-grid { columns: 4 180px }
   .queue-row { grid-template-columns: minmax(240px,1fr) 150px auto }.storage-tag { display: none }.row-actions button span { display: none }
+}
+@media (min-width: 1101px) and (max-width: 1279px) {
+  .topbar { right: 24px; left: 24px; width: auto; transform: none }
+  .page { width: min(100% - 64px, 1100px) }
 }
 @media (max-width: 900px) {
   .topbar { gap: 14px; padding: 0 14px }
@@ -452,8 +478,9 @@ code { font-family: "JetBrains Mono", monospace }
   .auth-theme-button { top: 14px; right: 14px }
   .page { width: calc(100% - 32px); padding: 28px 0 40px }
   .content-stack { gap: 24px }
-  .management-nav { width: 100% }
+  .management-nav { bottom: calc(84px + env(safe-area-inset-bottom)); width: calc(100% - 32px); max-width: 430px }
   .management-nav a { flex: 1; justify-content: center; padding-inline: 10px }
+  .page:has(.management-nav) { padding-bottom: 148px }
   .page-heading,.settings-heading { min-height: 0; align-items: stretch; flex-direction: column; gap: 16px }
   .page-heading h1,.settings-heading h1 { font-size: 27px; line-height: 34px }
   .page-heading p,.settings-heading p { font-size: 13px }
@@ -466,6 +493,11 @@ code { font-family: "JetBrains Mono", monospace }
   .upload-mode-switch button { flex: 1 }
   .url-import-panel { min-height: 360px; padding: 28px 16px }
   .upload-art { width: 64px; height: 64px }
+  .upload-stats { min-height: 0; grid-template-columns: 1fr }
+  .upload-stats>header { padding: 14px 16px; border-bottom: 1px solid var(--line) }
+  .upload-stats dl>div { min-width: 0; padding: 12px 14px }
+  .upload-stats dl>div:first-child { border-left: 0 }
+  .upload-stats dd { font-size: 19px }
   .dropzone h2 { max-width: 100%; font-size: 18px }
   .dropzone p { max-width: 300px; margin-bottom: 20px; font-size: 12px }
   .queue-head { align-items: stretch; flex-direction: column; gap: 9px; padding: 14px }
@@ -494,6 +526,7 @@ code { font-family: "JetBrains Mono", monospace }
   .preview-actions button { flex: 1; justify-content: center }
   .preview-actions .danger { flex-basis: 100%; margin-left: 0 }
   .batch-bar { right: 10px; bottom: calc(86px + env(safe-area-inset-bottom)); left: 10px; max-width: calc(100% - 20px); min-height: 54px; padding: 7px 9px 7px 13px }
+  .page:has(.management-nav) .batch-bar { bottom: calc(152px + env(safe-area-inset-bottom)) }
   .batch-spacer { display: none }
   .trash-heading-actions { align-items: stretch; flex-direction: column }
   .trash-heading-actions .soft-button { width: 100% }

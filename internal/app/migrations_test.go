@@ -33,7 +33,7 @@ func TestMigrateEmptyDatabaseToLatest(t *testing.T) {
 	if version != schemaVersion {
 		t.Fatalf("数据库版本为 %d，期望 %d", version, schemaVersion)
 	}
-	for _, table := range []string{"users", "images", "image_variants", "tags", "image_tags", "albums", "album_images", "image_search"} {
+	for _, table := range []string{"users", "images", "image_variants", "tags", "image_tags", "albums", "album_images", "image_search", "usage_stats"} {
 		var name string
 		if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name); err != nil {
 			t.Fatalf("缺少表 %s: %v", table, err)

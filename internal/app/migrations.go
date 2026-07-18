@@ -19,6 +19,7 @@ var migrations = []migration{
 	{Version: 5, Up: migrateV5},
 	{Version: 6, Up: migrateV6},
 	{Version: 7, Up: migrateV7},
+	{Version: 8, Up: migrateV8},
 }
 
 var schemaVersion = migrations[len(migrations)-1].Version
@@ -183,5 +184,15 @@ func migrateV7(ctx context.Context, tx *sql.Tx) error {
 			ON images(storage_type, object_key, storage_id)`,
 		`CREATE INDEX idx_image_variants_object
 			ON image_variants(object_key)`,
+	)
+}
+
+func migrateV8(ctx context.Context, tx *sql.Tx) error {
+	return execMigration(ctx, tx,
+		`CREATE TABLE usage_stats (
+			key TEXT PRIMARY KEY,
+			value INTEGER NOT NULL DEFAULT 0
+		)`,
+		`INSERT INTO usage_stats(key,value) VALUES('traffic_bytes',0)`,
 	)
 }

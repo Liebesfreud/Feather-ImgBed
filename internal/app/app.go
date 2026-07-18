@@ -109,6 +109,7 @@ func (a *App) routes() {
 	a.mux.Handle("GET /api/v1/settings", a.protect(tokenScopeRead, http.HandlerFunc(a.getSettings)))
 	a.mux.Handle("PUT /api/v1/settings", a.protect(tokenScopeAdmin, http.HandlerFunc(a.putSettings)))
 	a.mux.Handle("GET /api/v1/system", a.protect(tokenScopeRead, http.HandlerFunc(a.systemInfo)))
+	a.mux.Handle("GET /api/v1/statistics", a.protect(tokenScopeRead, http.HandlerFunc(a.getStatistics)))
 
 	a.registerOrganizationRoutes()
 	a.registerImportRoutes()

@@ -125,7 +125,7 @@ onMounted(() => void load(true))
 
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/><p>正在读取回收站…</p></div>
     <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>回收站暂时无法加载</h2><button class="soft-button" @click="load(true)"><RefreshCw :size="17"/>重新加载</button></div>
-    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><Trash2 :size="44"/></div><h2>回收站是空的</h2><p>从图库删除的图片会暂时保留在这里。</p></div>
+    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><Trash2 :size="44"/></div><h2>回收站是空的</h2></div>
     <div v-else class="image-grid trash-grid">
       <article v-for="item in images" :key="item.id" class="image-card trash-card" :class="{ selected: selected.has(item.id) }" @click="selectMode && toggleSelected(item.id)">
         <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }">

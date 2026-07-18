@@ -116,6 +116,11 @@ func (a *App) logRequest(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
+		if r.Method == http.MethodGet && status >= 200 && status < 300 && metrics.bytes > 0 && isImageTrafficPath(r.URL.Path) {
+			if err := a.recordTraffic(metrics.bytes); err != nil {
+				a.logger.Warn("累计图片流量失败", "path", r.URL.Path, "bytes", metrics.bytes, "error", err)
+			}
+		}
 		a.logger.Info("请求完成",
 			"request_id", requestID(r),
 			"method", r.Method,
@@ -126,6 +131,13 @@ func (a *App) logRequest(next http.Handler) http.Handler {
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
+}
+
+func isImageTrafficPath(path string) bool {
+	return strings.HasPrefix(path, "/files/") ||
+		strings.HasPrefix(path, "/s3-files/") ||
+		strings.HasPrefix(path, "/tg-files/") ||
+		strings.HasPrefix(path, "/api/v1/trash/")
 }
 
 func (a *App) recoverPanic(next http.Handler) http.Handler {

@@ -102,7 +102,15 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
         </DropdownMenuRoot>
       </div>
     </header>
-    <main class="page"><RouterView /></main>
+    <main class="page">
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="page-fade" mode="out-in">
+          <div :key="route.path" class="route-page">
+            <component :is="Component" />
+          </div>
+        </Transition>
+      </RouterView>
+    </main>
   </div>
   <ToastHost />
   </TooltipProvider>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { CloudUpload, ImagePlus, Clipboard, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database, X, Braces, Clock3, RefreshCw } from '@lucide/vue'
+import { CloudUpload, ImagePlus, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database, X, Braces, Clock3, RefreshCw } from '@lucide/vue'
 import { api, ApiError, postJSON, uploadFile } from '../api'
 import { toast } from '../toast'
 import type { ImageItem, Settings, StorageRecord } from '../types'
@@ -20,6 +20,12 @@ interface QueueItem {
   cancel?: () => void
 }
 
+interface UploadStatistics {
+  image_count: number
+  storage_bytes: number
+  traffic_bytes: number
+}
+
 const MAX_CONCURRENT_UPLOADS = 3
 const input = ref<HTMLInputElement>()
 const queue = ref<QueueItem[]>([])
@@ -33,6 +39,7 @@ const remoteURL = ref('')
 const remoteFilename = ref('')
 const importingURL = ref(false)
 const urlImports = ref<ImageItem[]>([])
+const statistics = ref<UploadStatistics | null>(null)
 const uploading = computed(() => queue.value.some((item) => item.state === 'uploading'))
 const successes = computed(() => queue.value.filter((item) => item.state === 'success'))
 const activeCount = computed(() => queue.value.filter((item) => item.state === 'uploading').length)
@@ -77,6 +84,7 @@ async function uploadOne(item: QueueItem) {
   try {
     item.result = await request.promise
     item.progress = 100; item.state = 'success'; toast(`${item.file.name} 上传成功`)
+    void loadStatistics()
   } catch (error) {
     item.state = error instanceof ApiError && error.code === 'UPLOAD_ABORTED' ? 'cancelled' : 'error'
     item.error = error instanceof Error ? error.message : '上传失败，请重试'
@@ -142,6 +150,7 @@ async function importFromURL() {
     remoteURL.value = ''
     remoteFilename.value = ''
     toast('图片已从 URL 导入')
+    void loadStatistics()
     const preferences = readCopyPreferences()
     if (preferences.autoCopy) {
       try {
@@ -164,6 +173,17 @@ function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, bytes / 1024).toFixed(0)} KB`
   const megabytes = bytes / 1024 / 1024
   return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(2)} MB`
+}
+function formatMetricBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = units[0]
+  for (let index = 1; index < units.length && value >= 1024; index++) {
+    value /= 1024
+    unit = units[index]
+  }
+  return `${value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`
 }
 function stateLabel(item: QueueItem) {
   if (item.state === 'success') return '上传成功'
@@ -196,10 +216,15 @@ async function loadUploadOptions() {
     toast(error instanceof Error ? error.message : '上传配置读取失败', 'error')
   }
 }
+async function loadStatistics() {
+  try { statistics.value = await api<UploadStatistics>('/statistics') }
+  catch { statistics.value = null }
+}
 onMounted(() => {
   document.addEventListener('paste', onPaste)
   window.addEventListener('beforeunload', beforeUnload)
   void loadUploadOptions()
+  void loadStatistics()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('paste', onPaste)
@@ -211,24 +236,30 @@ onBeforeUnmount(() => {
 <template>
   <section class="content-stack upload-view">
     <div v-if="initialLoadFailed" class="gallery-state load-error-banner"><CircleAlert :size="32"/><h2>上传配置暂时无法读取</h2><button class="soft-button" @click="loadUploadOptions"><RefreshCw :size="17"/>重新加载</button></div>
-    <header class="page-heading"><div><h1>上传图片</h1><p>拖放、粘贴或选择文件，链接会在上传完成后立即生成。</p></div>
+    <header class="page-heading upload-heading">
+      <h1 class="sr-only">上传图片</h1>
+      <div class="upload-mode-switch" role="tablist" aria-label="上传方式"><button role="tab" :aria-selected="uploadMode === 'local'" :class="{ active: uploadMode === 'local' }" @click="uploadMode = 'local'">本地文件</button><button role="tab" :aria-selected="uploadMode === 'url'" :class="{ active: uploadMode === 'url' }" @click="uploadMode = 'url'">图片 URL</button></div>
       <div class="storage-select"><Database :size="17"/><span>上传至</span><UiSelect v-model="selectedStorage" :options="storageOptions" aria-label="选择上传存储" /></div>
     </header>
-    <div class="upload-mode-switch" role="tablist" aria-label="上传方式"><button role="tab" :aria-selected="uploadMode === 'local'" :class="{ active: uploadMode === 'local' }" @click="uploadMode = 'local'">本地文件</button><button role="tab" :aria-selected="uploadMode === 'url'" :class="{ active: uploadMode === 'url' }" @click="uploadMode = 'url'">图片 URL</button></div>
     <div v-if="uploadMode === 'local'" class="dropzone" :class="{ dragging }" @dragenter.prevent="dragging = true" @dragover.prevent @dragleave.prevent="dragging = false" @drop.prevent="onDrop" @click="input?.click()">
       <input ref="input" class="sr-only" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple @change="onPick">
       <div class="upload-art"><CloudUpload :size="42"/></div>
-      <h2>拖放图片到此处，或选择本地文件</h2>
-      <p>支持 JPEG、PNG、GIF、WebP · 单文件最大 {{ formatSize(settings?.max_file_size || 20 * 1024 * 1024) }}</p>
       <button class="primary-button" type="button"><ImagePlus :size="19"/>选择图片</button>
-      <small><Clipboard :size="15"/>也可以按 Ctrl / Cmd + V 粘贴图片</small>
     </div>
     <form v-else class="url-import-panel" @submit.prevent="importFromURL">
-      <div class="upload-art"><Link2 :size="42"/></div><h2>从直接图片地址导入</h2><p>只接受 HTTP / HTTPS 图片直链，不会解析网页中的图片。</p>
+      <div class="upload-art"><Link2 :size="42"/></div><h2>URL 导入</h2>
       <label>图片地址<input v-model.trim="remoteURL" type="url" required placeholder="https://example.com/image.jpg" autocomplete="url"></label>
       <label>保存文件名（可选）<input v-model.trim="remoteFilename" maxlength="255" placeholder="例如 summer.jpg"></label>
       <button class="primary-button" :disabled="importingURL"><LoaderCircle v-if="importingURL" class="spin" :size="18"/><CloudUpload v-else :size="18"/>{{ importingURL ? '服务端正在下载…' : '导入图片' }}</button>
     </form>
+    <section class="upload-stats" aria-label="站点统计">
+      <header><h2>站点统计</h2></header>
+      <dl>
+        <div><dt>图片总数</dt><dd>{{ statistics?.image_count ?? '—' }}</dd></div>
+        <div><dt>存储占用</dt><dd>{{ statistics ? formatMetricBytes(statistics.storage_bytes) : '—' }}</dd></div>
+        <div><dt>累计流量</dt><dd>{{ statistics ? formatMetricBytes(statistics.traffic_bytes) : '—' }}</dd></div>
+      </dl>
+    </section>
     <section v-if="urlImports.length" class="queue-panel url-import-results"><header class="queue-head"><div><h2>最近 URL 导入</h2></div><div><span>{{ urlImports.length }} 张</span></div></header><div class="queue-list"><article v-for="item in urlImports" :key="item.id" class="queue-row url-result-row"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" decoding="async"><div class="file-meta"><strong>{{ item.original_name }}</strong><span>{{ item.mime_type }} · {{ formatSize(item.size) }}</span></div><div class="upload-status success"><span><CheckCircle2 :size="17"/>导入成功</span><div class="progress"><i style="width:100%"></i></div></div><span class="storage-tag">{{ storages.find(s => s.id === item.storage_id)?.name || '默认存储' }}</span><div class="row-actions"><button @click="copy(item, 'url')"><Link2 :size="16"/><span>复制链接</span></button><button @click="copy(item, 'markdown')"><FileCode2 :size="16"/><span>Markdown</span></button><button @click="copy(item, 'html')"><Code2 :size="16"/><span>HTML</span></button><button @click="copy(item, 'bbcode')"><Braces :size="16"/><span>BBCode</span></button></div></article></div></section>
     <section v-if="queue.length" class="queue-panel">
       <header class="queue-head"><div><h2>上传队列 <span>({{ queue.length }})</span></h2><button v-if="successes.length" class="soft-button" @click="copyAll"><Copy :size="16"/>全部复制</button></div><div><span>{{ activeCount ? `${activeCount} 个正在上传 · ` : '' }}完成 {{ successes.length }} / {{ queue.length }}</span><button v-if="successes.length" class="text-button danger" @click="clearCompleted"><Trash2 :size="16"/>清空已完成</button></div></header>
@@ -248,6 +279,5 @@ onBeforeUnmount(() => {
         </article>
       </div>
     </section>
-    <div v-else class="gentle-tip"><span>小提示</span>一次可上传 {{ settings?.max_batch_count || 10 }} 张图片，每张图片都会独立处理，单项失败不会影响其他文件。</div>
   </section>
 </template>

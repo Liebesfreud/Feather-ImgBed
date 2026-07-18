@@ -429,6 +429,13 @@ paths:
       x-required-token-scope: images:read
       responses:
         "200": { $ref: "#/components/responses/Success" }
+  /statistics:
+    get:
+      tags: [System]
+      summary: 查询图片数量、存储占用和累计流量
+      x-required-token-scope: images:read
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
 components:
   securitySchemes:
     cookieAuth:

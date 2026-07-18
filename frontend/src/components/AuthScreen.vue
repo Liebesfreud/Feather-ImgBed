@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Feather, Eye, EyeOff, ArrowRight, ShieldCheck } from '@lucide/vue'
+import { Feather, Eye, EyeOff, ArrowRight } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 import { ApiError } from '../api'
 import UiTooltip from './ui/UiTooltip.vue'
@@ -33,16 +33,12 @@ async function submit() {
       <div class="auth-brand"><span><Feather :size="25" /></span>轻羽图床</div>
       <div class="auth-copy">
         <div class="auth-illustration" aria-hidden="true"><Feather :size="92" /></div>
-        <h1>让图片抵达<br>它该去的地方。</h1>
-        <p>上传、管理、分享。所有内容都由你掌控。</p>
       </div>
-      <div class="auth-trust"><ShieldCheck :size="18" />凭据只保存在你的服务器中</div>
     </section>
     <section class="auth-panel">
       <form class="auth-form" @submit.prevent="submit">
         <div>
           <h2>{{ isSetup ? '开始使用轻羽' : '欢迎回来' }}</h2>
-          <p>{{ isSetup ? '创建管理员账户，完成首次配置。' : '登录后继续管理你的图片。' }}</p>
         </div>
         <label>管理员用户名<input v-model="username" autocomplete="username" minlength="3" placeholder="至少 3 个字符" required></label>
         <label v-if="isSetup">站点访问地址<input v-model="siteUrl" type="url" placeholder="https://img.example.com" required></label>

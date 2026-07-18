@@ -330,8 +330,8 @@ onBeforeUnmount(() => {
 <template>
   <section class="content-stack gallery-view">
     <ImageManagementNav />
+    <h1 class="sr-only">图片管理</h1>
     <div v-if="initialLoadFailed" class="gallery-state load-error-banner"><ImageOff :size="36"/><h2>图库暂时无法初始化</h2><button class="soft-button" @click="initializeGallery"><RefreshCw :size="17"/>重新加载</button></div>
-    <header class="page-heading gallery-heading"><h1>图片管理</h1><span v-if="images.length">{{ images.length }} 张图片</span></header>
     <div class="gallery-toolbar">
       <label class="search-control"><Search :size="18"/><input v-model.trim="search" placeholder="搜索图片名称" aria-label="搜索图片名称"></label>
       <button class="filter-chip toolbar-chip" :class="{ active: favoriteOnly }" @click="favoriteOnly = !favoriteOnly"><Heart :size="16" :fill="favoriteOnly ? 'currentColor' : 'none'"/>仅看收藏</button>
@@ -348,8 +348,8 @@ onBeforeUnmount(() => {
       <button v-if="advancedFilterCount" class="filter-clear" @click="clearAdvancedFilters">清除筛选</button>
     </div>
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/><p>正在整理图库…</p></div>
-    <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>图库暂时无法加载</h2><p>筛选条件已为你保留，请稍后重试。</p><button class="soft-button" @click="load(true)"><RefreshCw :size="17"/>重新加载</button></div>
-    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><ImageOff :size="46"/></div><h2>{{ hasFilters ? '没有找到匹配的图片' : '图库还是空的' }}</h2><p>{{ hasFilters ? '试试更换关键词或调整筛选条件。' : '上传第一张图片，开始构建你的灵感空间。' }}</p><button v-if="hasFilters" class="soft-button" @click="clearFilters">清除筛选</button><button v-else class="primary-button" @click="router.push('/upload')"><UploadCloud :size="18"/>上传第一张图片</button></div>
+    <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>图库暂时无法加载</h2><button class="soft-button" @click="load(true)"><RefreshCw :size="17"/>重新加载</button></div>
+    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><ImageOff :size="46"/></div><h2>{{ hasFilters ? '没有找到匹配的图片' : '图库还是空的' }}</h2><button v-if="hasFilters" class="soft-button" @click="clearFilters">清除筛选</button><button v-else class="primary-button" @click="router.push('/upload')"><UploadCloud :size="18"/>上传第一张图片</button></div>
     <div v-else class="image-grid">
       <article v-for="(item, index) in images" :key="item.id" class="image-card" :class="{ selected: selected.has(item.id) }" @click="openPreview(index)">
         <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" :loading="index < 4 ? 'eager' : 'lazy'" :fetchpriority="index === 0 ? 'high' : 'auto'" decoding="async"><UiCheckbox v-if="selectMode" class="select-check" :model-value="selected.has(item.id)" :aria-label="`选择 ${item.original_name}`" @click.stop @update:model-value="toggleSelected(item.id)" /><button v-else class="favorite-card-button" :class="{ active: item.favorite }" :disabled="favoriteBusy.has(item.id)" :aria-label="item.favorite ? `取消收藏 ${item.original_name}` : `收藏 ${item.original_name}`" @click.stop="toggleFavorite(item)"><Heart :size="17" :fill="item.favorite ? 'currentColor' : 'none'"/></button></div>

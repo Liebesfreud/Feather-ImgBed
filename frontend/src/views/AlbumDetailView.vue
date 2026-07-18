@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, FolderHeart, ImageOff, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { api, deleteJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import { formatImageLink, readCopyPreferences } from '../linkFormats'
@@ -98,10 +98,10 @@ onMounted(() => void load())
   <section class="content-stack album-detail-view">
     <ImageManagementNav />
     <button class="back-link" @click="router.push('/albums')"><ArrowLeft :size="17"/>返回相册</button>
-    <header v-if="album" class="page-heading album-detail-heading"><div><h1>{{ album.name }}</h1><p>{{ album.description || '这个相册还没有描述。' }} · {{ images.length }} 张图片</p></div><div><button class="soft-button" @click="openEdit"><Pencil :size="17"/>编辑</button><button class="soft-button danger" @click="requestDanger({ kind: 'album' })"><Trash2 :size="17"/>删除相册</button></div></header>
+    <header v-if="album" class="page-heading album-detail-heading"><div><h1>{{ album.name }}</h1><p><template v-if="album.description">{{ album.description }} · </template>{{ images.length }} 张图片</p></div><div><button class="soft-button" @click="openEdit"><Pencil :size="17"/>编辑</button><button class="soft-button danger" @click="requestDanger({ kind: 'album' })"><Trash2 :size="17"/>删除相册</button></div></header>
     <div v-if="loading" class="gallery-state"><LoaderCircle class="spin" :size="28"/>正在打开相册…</div>
     <div v-else-if="failed" class="gallery-state"><ImageOff :size="38"/><h2>相册暂时无法加载</h2><button class="soft-button" @click="load"><RefreshCw :size="17"/>重新加载</button></div>
-    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><FolderHeart :size="44"/></div><h2>相册还是空的</h2><p>到图库开启批量管理，把图片添加到这个相册。</p><button class="primary-button" @click="router.push('/gallery')">前往图库</button></div>
+    <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><FolderHeart :size="44"/></div><h2>相册还是空的</h2><button class="primary-button" @click="router.push('/gallery')">前往图库</button></div>
     <div v-else class="image-grid album-image-grid">
       <article v-for="(item, index) in images" :key="item.id" class="image-card album-image-card" @click="previewIndex = index">
         <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" :loading="index < 4 ? 'eager' : 'lazy'" :fetchpriority="index === 0 ? 'high' : 'auto'" decoding="async"><span v-if="album?.cover_image_id === item.id" class="cover-label"><Check :size="13"/>封面</span></div>
@@ -109,14 +109,14 @@ onMounted(() => void load())
       </article>
     </div>
 
-    <DialogRoot :open="Boolean(preview)" @update:open="!$event && (previewIndex = -1)"><DialogPortal><DialogOverlay class="lightbox-overlay"/><DialogContent v-if="preview" class="lightbox-panel album-lightbox">
+    <DialogRoot :open="Boolean(preview)" @update:open="!$event && (previewIndex = -1)"><DialogPortal><DialogOverlay class="lightbox-overlay"/><DialogContent v-if="preview" class="lightbox-panel album-lightbox" :aria-describedby="undefined">
       <DialogClose class="lightbox-close" aria-label="关闭预览"><X :size="24"/></DialogClose>
       <div class="preview-stage"><img :src="preview.url" :alt="preview.original_name" decoding="async"><button class="preview-nav prev" aria-label="上一张" @click="move(-1)"><ChevronLeft :size="26"/></button><button class="preview-nav next" aria-label="下一张" @click="move(1)"><ChevronRight :size="26"/></button></div>
-      <div class="preview-info"><div><DialogTitle as-child><h2>{{ preview.original_name }}</h2></DialogTitle><DialogDescription>正在浏览“{{ album?.name }}”，关闭预览后仍回到当前相册。</DialogDescription></div><div class="preview-actions"><button @click="copyPreview"><Copy :size="17"/>复制链接</button><button @click="saveAlbum(preview.id)"><FolderHeart :size="17"/>设为封面</button><button class="danger" @click="requestDanger({ kind: 'remove', item: preview })"><Trash2 :size="17"/>移出相册</button></div></div>
+      <div class="preview-info"><div><DialogTitle as-child><h2>{{ preview.original_name }}</h2></DialogTitle></div><div class="preview-actions"><button @click="copyPreview"><Copy :size="17"/>复制链接</button><button @click="saveAlbum(preview.id)"><FolderHeart :size="17"/>设为封面</button><button class="danger" @click="requestDanger({ kind: 'remove', item: preview })"><Trash2 :size="17"/>移出相册</button></div></div>
     </DialogContent></DialogPortal></DialogRoot>
 
-    <DialogRoot v-model:open="editOpen"><DialogPortal><DialogOverlay class="dialog-overlay"/><DialogContent class="form-dialog album-form-dialog">
-      <header><span class="form-dialog-icon"><FolderHeart :size="20"/></span><div><DialogTitle>编辑相册</DialogTitle><DialogDescription>更新相册名称与描述，封面会保持不变。</DialogDescription></div><DialogClose aria-label="关闭"><X :size="20"/></DialogClose></header>
+    <DialogRoot v-model:open="editOpen"><DialogPortal><DialogOverlay class="dialog-overlay"/><DialogContent class="form-dialog album-form-dialog" :aria-describedby="undefined">
+      <header><span class="form-dialog-icon"><FolderHeart :size="20"/></span><div><DialogTitle>编辑相册</DialogTitle></div><DialogClose aria-label="关闭"><X :size="20"/></DialogClose></header>
       <form class="dialog-form" @submit.prevent="saveAlbum()"><label>相册名称<input v-model.trim="form.name" maxlength="100" required></label><label>描述<textarea v-model.trim="form.description" maxlength="1000" rows="4"></textarea></label><footer><button type="button" class="soft-button" @click="editOpen = false">取消</button><button class="primary-button" :disabled="working">{{ working ? '保存中…' : '保存修改' }}</button></footer></form>
     </DialogContent></DialogPortal></DialogRoot>
     <ConfirmDialog v-model:open="dangerOpen" :title="dangerTitle" :description="dangerDescription" :confirm-label="dangerAction?.kind === 'album' ? '删除相册' : '移出相册'" :busy="working" @confirm="confirmDanger"/>
