@@ -1,9 +1,6 @@
 name: 发布容器镜像
 
 on:
-  push:
-    branches:
-      - product
   release:
     types:
       - published
@@ -13,13 +10,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
-  group: publish-${{ github.event.release.tag_name || github.ref }}
+  group: publish-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
   verify:
     name: 发布前验证
-    if: github.event_name != 'release' || github.event.release.prerelease == false
+    if: github.event.release.prerelease == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -31,7 +28,6 @@ jobs:
           fetch-depth: 0
 
       - name: 校验正式 Release 来源
-        if: github.event_name == 'release'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -39,10 +35,10 @@ jobs:
             echo "正式 Release 标签必须符合 vX.Y.Z，当前为：$RELEASE_TAG"
             exit 1
           fi
-          git fetch origin product:refs/remotes/origin/product
+          git fetch origin main:refs/remotes/origin/main
           release_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
-          if ! git merge-base --is-ancestor "$release_commit" origin/product; then
-            echo "Release 标签必须指向 product 分支中的提交"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "Release 标签必须指向 main 分支历史中的提交"
             exit 1
           fi
 
@@ -105,11 +101,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
           flavor: latest=false
           tags: |
-            type=raw,value=product,enable=${{ github.event_name == 'push' }}
-            type=sha,prefix=sha-,enable=${{ github.event_name == 'push' }}
-            type=semver,pattern={{version}},value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }}
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.title=Feather-ImgBed
             org.opencontainers.image.description=轻羽图床容器镜像
@@ -129,7 +123,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ github.event.release.tag_name || github.sha }}
+          build-args: VERSION=${{ github.event.release.tag_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
