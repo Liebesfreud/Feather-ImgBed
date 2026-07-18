@@ -75,7 +75,11 @@ test('图库恢复 query、复制 Markdown 并批量移入回收站', async ({ p
   await page.getByRole('button', { name: '筛选' }).click()
   await expect(page.getByLabel('起始日期')).toHaveValue('2026-07-01')
   await expect(page.getByLabel('结束日期')).toHaveValue('2026-07-17')
-  await expect(page.getByRole('img', { name: 'cat.jpg' })).toHaveAttribute('src', pixel)
+  const firstImage = page.getByRole('img', { name: 'cat.jpg' })
+  await expect(firstImage).toHaveAttribute('src', pixel)
+  await expect(firstImage).toHaveAttribute('loading', 'eager')
+  await expect(firstImage).toHaveAttribute('fetchpriority', 'high')
+  await expect(firstImage).toHaveAttribute('decoding', 'async')
 
   const imageRequest = calls.find((call) => call.path === '/images')
   expect(imageRequest?.query?.get('order')).toBe('asc')

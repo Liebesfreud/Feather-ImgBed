@@ -18,6 +18,7 @@ var migrations = []migration{
 	{Version: 4, Up: migrateV4},
 	{Version: 5, Up: migrateV5},
 	{Version: 6, Up: migrateV6},
+	{Version: 7, Up: migrateV7},
 }
 
 var schemaVersion = migrations[len(migrations)-1].Version
@@ -173,5 +174,14 @@ func migrateV6(ctx context.Context, tx *sql.Tx) error {
 			INSERT INTO image_search(rowid,original_name) VALUES(new.rowid,new.original_name);
 		END`,
 		`INSERT INTO image_search(image_search) VALUES('rebuild')`,
+	)
+}
+
+func migrateV7(ctx context.Context, tx *sql.Tx) error {
+	return execMigration(ctx, tx,
+		`CREATE INDEX idx_images_storage_object
+			ON images(storage_type, object_key, storage_id)`,
+		`CREATE INDEX idx_image_variants_object
+			ON image_variants(object_key)`,
 	)
 }

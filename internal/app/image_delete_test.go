@@ -207,7 +207,11 @@ func TestAuthenticatedLocalTrashPreview(t *testing.T) {
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("认证后无法读取回收站预览: %s => %d", target, recorder.Code)
 		}
-		if recorder.Header().Get("Content-Type") != "image/png" ||
+		expectedMIME := "image/png"
+		if target == preview.ThumbnailURL {
+			expectedMIME = "image/webp"
+		}
+		if recorder.Header().Get("Content-Type") != expectedMIME ||
 			recorder.Header().Get("Cache-Control") != "private, no-store" ||
 			recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
 			t.Fatalf("回收站预览响应头错误: %#v", recorder.Header())
@@ -216,7 +220,7 @@ func TestAuthenticatedLocalTrashPreview(t *testing.T) {
 			t.Fatal("回收站原图内容不一致")
 		}
 		if target == preview.ThumbnailURL {
-			if _, format, err := image.Decode(bytes.NewReader(recorder.Body.Bytes())); err != nil || format != "png" {
+			if _, format, err := image.Decode(bytes.NewReader(recorder.Body.Bytes())); err != nil || format != "webp" {
 				t.Fatalf("回收站缩略图内容无效: format=%q err=%v", format, err)
 			}
 		}

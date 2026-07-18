@@ -81,7 +81,7 @@ func sanitizeImageFile(source *os.File, sourceMIME string) (int64, image.Config,
 	return size, image.Config{Width: bounds.Dx(), Height: bounds.Dy()}, nil
 }
 
-func generateThumbnailFromImage(decoded image.Image, sourceMIME, imageID string) (generatedImage, error) {
+func generateThumbnailFromImage(decoded image.Image, _ string, imageID string) (generatedImage, error) {
 	bounds := decoded.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if width <= 0 || height <= 0 {
@@ -101,20 +101,15 @@ func generateThumbnailFromImage(decoded image.Image, sourceMIME, imageID string)
 	target := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
 	xdraw.CatmullRom.Scale(target, target.Bounds(), decoded, bounds, xdraw.Over, nil)
 	var buffer bytes.Buffer
-	mimeType, extension := "image/png", ".png"
-	var err error
-	if sourceMIME == "image/jpeg" {
-		mimeType, extension = "image/jpeg", ".jpg"
-		err = jpeg.Encode(&buffer, target, &jpeg.Options{Quality: 82})
-	} else {
-		err = png.Encode(&buffer, target)
-	}
-	if err != nil {
+	if err := webpencoder.Encode(&buffer, target, &webpencoder.EncoderOptions{
+		Quality: 80,
+		Method:  4,
+	}); err != nil {
 		return generatedImage{}, err
 	}
 	return generatedImage{
-		Reader: bytes.NewReader(buffer.Bytes()), ObjectKey: "variants/" + imageID + "/thumbnail" + extension,
-		MIMEType: mimeType, Size: int64(buffer.Len()), Width: targetWidth, Height: targetHeight,
+		Reader: bytes.NewReader(buffer.Bytes()), ObjectKey: "variants/" + imageID + "/thumbnail.webp",
+		MIMEType: "image/webp", Size: int64(buffer.Len()), Width: targetWidth, Height: targetHeight,
 	}, nil
 }
 

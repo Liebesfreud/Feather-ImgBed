@@ -358,6 +358,9 @@ func TestLocalOriginalAndVariantFilesRespectTrash(t *testing.T) {
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("本地图片 %s 无法访问: %d", target, recorder.Code)
 		}
+		if recorder.Header().Get("ETag") == "" {
+			t.Fatalf("本地图片 %s 缺少 ETag", target)
+		}
 	}
 
 	recorder, _ = request(t, handler, http.MethodDelete, "/api/v1/images/"+uploaded.ID, nil, cookie, csrf, "", "")

@@ -25,23 +25,23 @@ type ThumbnailRebuildReport struct {
 
 func (a *App) RebuildThumbnails(ctx context.Context) (ThumbnailRebuildReport, error) {
 	report := ThumbnailRebuildReport{Items: make([]ThumbnailRebuildItem, 0)}
-	rows, err := a.db.QueryContext(ctx, `SELECT i.id,i.object_key,i.storage_id,i.mime_type
+	rows, err := a.db.QueryContext(ctx, `SELECT i.id,i.object_key,i.storage_id,i.mime_type,
+			COALESCE(v.object_key,'')
 		FROM images i
+		LEFT JOIN image_variants v ON v.image_id=i.id AND v.kind='thumbnail'
 		WHERE i.deleted_at IS NULL
-		  AND NOT EXISTS (
-			SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.kind='thumbnail'
-		  )
+		  AND (v.id IS NULL OR v.mime_type!='image/webp' OR v.object_key NOT LIKE '%.webp')
 		ORDER BY i.created_at,i.id`)
 	if err != nil {
 		return report, err
 	}
 	type candidate struct {
-		id, objectKey, storageID, mimeType string
+		id, objectKey, storageID, mimeType, oldThumbnailKey string
 	}
 	var candidates []candidate
 	for rows.Next() {
 		var item candidate
-		if err := rows.Scan(&item.id, &item.objectKey, &item.storageID, &item.mimeType); err != nil {
+		if err := rows.Scan(&item.id, &item.objectKey, &item.storageID, &item.mimeType, &item.oldThumbnailKey); err != nil {
 			_ = rows.Close()
 			return report, err
 		}
@@ -77,7 +77,7 @@ func (a *App) RebuildThumbnails(ctx context.Context) (ThumbnailRebuildReport, er
 			report.Items = append(report.Items, result)
 			continue
 		}
-		if err := a.rebuildOneThumbnail(ctx, backend, record, item.id, item.objectKey, item.mimeType); err != nil {
+		if err := a.rebuildOneThumbnail(ctx, backend, record, item.id, item.objectKey, item.mimeType, item.oldThumbnailKey); err != nil {
 			a.logger.Warn("缩略图回填失败", "image_id", item.id, "storage_id", item.storageID, "error", err)
 			result.Status, result.Message = "failed", err.Error()
 			report.Failed++
@@ -94,7 +94,7 @@ func (a *App) rebuildOneThumbnail(
 	ctx context.Context,
 	backend storageBackend,
 	record StorageRecord,
-	imageID, objectKey, mimeType string,
+	imageID, objectKey, mimeType, oldThumbnailKey string,
 ) error {
 	openCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	source, err := backend.Open(openCtx, objectKey)
@@ -146,10 +146,25 @@ func (a *App) rebuildOneThumbnail(
 	}
 	_, err = a.db.ExecContext(ctx, `INSERT INTO image_variants(
 		id,image_id,kind,object_key,public_url,mime_type,size,width,height,created_at
-	) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+	) VALUES(?,?,?,?,?,?,?,?,?,?)
+	ON CONFLICT(image_id,kind) DO UPDATE SET
+		object_key=excluded.object_key,
+		public_url=excluded.public_url,
+		mime_type=excluded.mime_type,
+		size=excluded.size,
+		width=excluded.width,
+		height=excluded.height,
+		created_at=excluded.created_at`,
 		variant.ID, variant.ImageID, variant.Kind, variant.ObjectKey, variant.PublicURL,
 		variant.MIMEType, variant.Size, variant.Width, variant.Height, variant.CreatedAt)
 	if err == nil {
+		if oldThumbnailKey != "" && oldThumbnailKey != storedKey {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cleanupCancel()
+			if deleteErr := backend.Delete(cleanupCtx, oldThumbnailKey); deleteErr != nil {
+				a.logger.Warn("旧缩略图清理失败", "image_id", imageID, "object_key", oldThumbnailKey, "error", deleteErr)
+			}
+		}
 		return nil
 	}
 	rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 15*time.Second)

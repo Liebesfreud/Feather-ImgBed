@@ -39,6 +39,12 @@ func TestMigrateEmptyDatabaseToLatest(t *testing.T) {
 			t.Fatalf("缺少表 %s: %v", table, err)
 		}
 	}
+	for _, index := range []string{"idx_images_storage_object", "idx_image_variants_object"} {
+		var name string
+		if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, index).Scan(&name); err != nil {
+			t.Fatalf("缺少索引 %s: %v", index, err)
+		}
+	}
 }
 
 func TestMigratePreservesV1Data(t *testing.T) {

@@ -122,13 +122,16 @@ func (a *App) routes() {
 func (a *App) serveLocalFile(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/files/")
 	var storageID string
-	if err := a.db.QueryRowContext(r.Context(), `SELECT i.storage_id
-		FROM images i
-		WHERE i.storage_type='local' AND i.deleted_at IS NULL
-			AND (i.object_key=? OR EXISTS (
-				SELECT 1 FROM image_variants v WHERE v.image_id=i.id AND v.object_key=?
-			))
-		ORDER BY i.created_at DESC LIMIT 1`, key, key).Scan(&storageID); err != nil {
+	if err := a.db.QueryRowContext(r.Context(), `SELECT storage_id FROM (
+			SELECT i.storage_id,i.created_at,0 AS priority
+			FROM images i
+			WHERE i.storage_type='local' AND i.deleted_at IS NULL AND i.object_key=?
+			UNION ALL
+			SELECT i.storage_id,i.created_at,1 AS priority
+			FROM image_variants v
+			JOIN images i ON i.id=v.image_id
+			WHERE i.storage_type='local' AND i.deleted_at IS NULL AND v.object_key=?
+		) ORDER BY created_at DESC,priority LIMIT 1`, key, key).Scan(&storageID); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -158,6 +161,7 @@ func (a *App) serveLocalFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("ETag", `"`+hashToken(storageID+"\x00"+key)+`"`)
 	http.ServeFile(w, r, target)
 }
 

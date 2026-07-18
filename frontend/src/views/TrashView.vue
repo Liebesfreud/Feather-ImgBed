@@ -129,7 +129,7 @@ onMounted(() => void load(true))
     <div v-else class="image-grid trash-grid">
       <article v-for="item in images" :key="item.id" class="image-card trash-card" :class="{ selected: selected.has(item.id) }" @click="selectMode && toggleSelected(item.id)">
         <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }">
-          <img :src="item.thumbnail_url || item.url" :alt="item.original_name" loading="lazy">
+          <img :src="item.thumbnail_url || item.url" :alt="item.original_name" loading="lazy" decoding="async">
           <UiCheckbox v-if="selectMode" class="select-check" :model-value="selected.has(item.id)" :aria-label="`选择 ${item.original_name}`" @click.stop @update:model-value="toggleSelected(item.id)" />
         </div>
         <div class="trash-card-body">

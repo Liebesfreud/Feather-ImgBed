@@ -104,14 +104,14 @@ onMounted(() => void load())
     <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><FolderHeart :size="44"/></div><h2>相册还是空的</h2><p>到图库开启批量管理，把图片添加到这个相册。</p><button class="primary-button" @click="router.push('/gallery')">前往图库</button></div>
     <div v-else class="image-grid album-image-grid">
       <article v-for="(item, index) in images" :key="item.id" class="image-card album-image-card" @click="previewIndex = index">
-        <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" loading="lazy"><span v-if="album?.cover_image_id === item.id" class="cover-label"><Check :size="13"/>封面</span></div>
+        <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" :loading="index < 4 ? 'eager' : 'lazy'" :fetchpriority="index === 0 ? 'high' : 'auto'" decoding="async"><span v-if="album?.cover_image_id === item.id" class="cover-label"><Check :size="13"/>封面</span></div>
         <div class="album-image-copy"><strong>{{ item.original_name }}</strong><div><button :disabled="working" @click.stop="saveAlbum(item.id)"><FolderHeart :size="15"/>设为封面</button><button class="danger" :disabled="working" @click.stop="requestDanger({ kind: 'remove', item })"><Trash2 :size="15"/>移出</button></div></div>
       </article>
     </div>
 
     <DialogRoot :open="Boolean(preview)" @update:open="!$event && (previewIndex = -1)"><DialogPortal><DialogOverlay class="lightbox-overlay"/><DialogContent v-if="preview" class="lightbox-panel album-lightbox">
       <DialogClose class="lightbox-close" aria-label="关闭预览"><X :size="24"/></DialogClose>
-      <div class="preview-stage"><img :src="preview.url" :alt="preview.original_name"><button class="preview-nav prev" aria-label="上一张" @click="move(-1)"><ChevronLeft :size="26"/></button><button class="preview-nav next" aria-label="下一张" @click="move(1)"><ChevronRight :size="26"/></button></div>
+      <div class="preview-stage"><img :src="preview.url" :alt="preview.original_name" decoding="async"><button class="preview-nav prev" aria-label="上一张" @click="move(-1)"><ChevronLeft :size="26"/></button><button class="preview-nav next" aria-label="下一张" @click="move(1)"><ChevronRight :size="26"/></button></div>
       <div class="preview-info"><div><DialogTitle as-child><h2>{{ preview.original_name }}</h2></DialogTitle><DialogDescription>正在浏览“{{ album?.name }}”，关闭预览后仍回到当前相册。</DialogDescription></div><div class="preview-actions"><button @click="copyPreview"><Copy :size="17"/>复制链接</button><button @click="saveAlbum(preview.id)"><FolderHeart :size="17"/>设为封面</button><button class="danger" @click="requestDanger({ kind: 'remove', item: preview })"><Trash2 :size="17"/>移出相册</button></div></div>
     </DialogContent></DialogPortal></DialogRoot>
 

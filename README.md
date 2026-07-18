@@ -117,7 +117,8 @@ feather-imgbed doctor -json -network -data ./data
 feather-imgbed backup create -data ./data -output ./feather-backup.tar.gz
 feather-imgbed backup restore -data ./data ./feather-backup.tar.gz
 
-# 为缺少缩略图的旧记录回填；缺少 file_id 的旧 Telegram 记录会跳过并写入报告
+# 为缺少缩略图的旧记录回填，并把旧格式缩略图升级为 WebP；
+# 缺少 file_id 的旧 Telegram 记录会跳过并写入报告
 feather-imgbed thumbnails rebuild -data ./data
 ```
 

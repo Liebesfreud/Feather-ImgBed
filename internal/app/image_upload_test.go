@@ -223,15 +223,15 @@ func TestGeneratedThumbnailUsesExpectedDimensionsAndEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if generated.Width != 480 || generated.Height != 240 || generated.MIMEType != "image/png" ||
-		generated.ObjectKey != "variants/image-id/thumbnail.png" {
+	if generated.Width != 480 || generated.Height != 240 || generated.MIMEType != "image/webp" ||
+		generated.ObjectKey != "variants/image-id/thumbnail.webp" {
 		t.Fatalf("缩略图属性错误: %+v", generated)
 	}
 	thumbnail, format, err := image.Decode(generated.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if format != "png" || thumbnail.Bounds().Dx() != 480 || thumbnail.Bounds().Dy() != 240 {
+	if format != "webp" || thumbnail.Bounds().Dx() != 480 || thumbnail.Bounds().Dy() != 240 {
 		t.Fatalf("缩略图内容错误: format=%s bounds=%v", format, thumbnail.Bounds())
 	}
 }
@@ -263,6 +263,46 @@ func TestRebuildThumbnailsUsesStorageOpen(t *testing.T) {
 	var count int
 	if err := a.db.QueryRow(`SELECT count(*) FROM image_variants WHERE image_id='legacy' AND kind='thumbnail'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("缩略图回填记录错误: count=%d err=%v", count, err)
+	}
+	var mimeType, objectKey string
+	if err := a.db.QueryRow(`SELECT mime_type,object_key FROM image_variants WHERE image_id='legacy' AND kind='thumbnail'`).Scan(&mimeType, &objectKey); err != nil {
+		t.Fatal(err)
+	}
+	if mimeType != "image/webp" || objectKey != "variants/legacy/thumbnail.webp" {
+		t.Fatalf("缩略图未使用 WebP: mime=%q key=%q", mimeType, objectKey)
+	}
+}
+
+func TestRebuildThumbnailsUpgradesLegacyFormat(t *testing.T) {
+	a, _, _ := prepareIngestTest(t)
+	content := pngBytes(t)
+	now := nowUTC()
+	insertImageForTest(t, a, "legacy", now, "")
+	if _, err := a.db.Exec(`INSERT INTO image_variants(
+		id,image_id,kind,object_key,public_url,mime_type,size,width,height,created_at
+	) VALUES('old-thumbnail','legacy','thumbnail','variants/legacy/thumbnail.png',
+		'/files/variants/legacy/thumbnail.png','image/png',10,2,2,?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	storage := &recordingUploadStorage{openContent: content}
+	a.backendFactory = func(StorageRecord) (storageBackend, error) { return storage, nil }
+
+	report, err := a.RebuildThumbnails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Total != 1 || report.Created != 1 || report.Failed != 0 {
+		t.Fatalf("旧缩略图升级报告错误: %+v", report)
+	}
+	var mimeType, objectKey string
+	if err := a.db.QueryRow(`SELECT mime_type,object_key FROM image_variants WHERE image_id='legacy' AND kind='thumbnail'`).Scan(&mimeType, &objectKey); err != nil {
+		t.Fatal(err)
+	}
+	if mimeType != "image/webp" || objectKey != "variants/legacy/thumbnail.webp" {
+		t.Fatalf("旧缩略图未升级: mime=%q key=%q", mimeType, objectKey)
+	}
+	if len(storage.deleteKeys) != 1 || storage.deleteKeys[0] != "variants/legacy/thumbnail.png" {
+		t.Fatalf("旧缩略图未清理: %+v", storage.deleteKeys)
 	}
 }
 
