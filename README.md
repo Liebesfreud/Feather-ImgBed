@@ -219,14 +219,31 @@ feather-imgbed backup restore -data /data /safe/feather-backup.tar.gz
 
 ## 从源码开发
 
-需要 Go 1.25+ 和 Node.js 22+：
+需要 Go 1.25+ 和 Node.js 22+。仓库提供 `Makefile` 封装常用流程，首次运行会自动安装前端依赖：
 
 ```bash
 git clone https://github.com/Liebesfreud/Feather-ImgBed.git
-cd Feather-ImgBed/frontend
-npm ci
-npm run build
-cd ..
+cd Feather-ImgBed
+make run        # 构建前端 + 启动服务（:8080，数据目录 ./data）
+```
+
+其它常用目标：
+
+```bash
+make build           # 构建前端 + 编译二进制 feather-imgbed
+make test            # 构建前端 + 运行 Go 测试（含竞态检测）
+make vet             # 构建前端 + 运行 go vet
+make test-frontend   # 仅运行前端单元测试
+make check           # 提交前综合检查（前端构建 + Go 测试 + vet）
+make clean           # 清理前端产物与二进制
+```
+
+> 前端产物 `internal/app/web/dist/` 由 `npm run build` 生成并被 `go:embed` 嵌入，未入库。直接运行 `go build`/`go test` 前需先构建前端，`make` 目标会自动处理这一步。
+
+手动等价流程：
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
 go run . -listen :8080 -data ./data
 ```
 
@@ -263,10 +280,10 @@ ghcr.io/liebesfreud/feather-imgbed:0.1.3
 提交代码前请至少运行：
 
 ```bash
-cd frontend && npm ci && npm run build && cd ..
-go test ./...
-go vet ./...
+make check
 ```
+
+等价于 `cd frontend && npm ci && npm run build && cd ..` 后运行 `go test ./...` 与 `go vet ./...`。
 
 ## 开源许可
 
