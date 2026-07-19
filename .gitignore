@@ -1,4 +1,54 @@
+# ===== 依赖与构建产物 =====
 frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 frontend/*.tsbuildinfo
+
+# 前端构建产物(npm run build 生成,被 go:embed 嵌入,不入库)
+internal/app/web/dist/
+
+# Go 构建与测试产物
+/feather-imgbed
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+
+# ===== 运行数据与密钥 =====
 data/
+*.db
+*.db-shm
+*.db-wal
 *.log
+
+# ===== 前端测试产物 =====
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+
+# ===== 本地环境与密钥 =====
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ===== AI 工具本地配置（个人/本地，不提交） =====
+.agents/
+.claude/
+.codex/
+.aider*
+
+# ===== 编辑器与系统文件 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
