@@ -13,6 +13,7 @@ import (
 
 const sessionCookie = "feather_session"
 const bcryptMaxPasswordBytes = 72
+const sessionLifetime = 30 * 24 * time.Hour
 
 func (a *App) initialized(ctx context.Context) (bool, error) {
 	var count int
@@ -133,14 +134,18 @@ func (a *App) createSession(w http.ResponseWriter, r *http.Request, userID int64
 		return
 	}
 	csrf, _ := randomToken(24)
-	expires := time.Now().UTC().Add(24 * time.Hour)
+	expires := time.Now().UTC().Add(sessionLifetime)
 	expiresAt := formatTime(expires)
 	_, err = a.db.ExecContext(r.Context(), "INSERT INTO sessions(id_hash,user_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)", hashToken(raw), userID, csrf, expiresAt, nowUTC())
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "SESSION_ERROR", "无法创建登录会话")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: raw, Path: "/", MaxAge: 86400, HttpOnly: true, Secure: a.cfg.SecureCookie || r.TLS != nil, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: raw, Path: "/",
+		Expires: expires, MaxAge: int(sessionLifetime / time.Second),
+		HttpOnly: true, Secure: a.cfg.SecureCookie || r.TLS != nil, SameSite: http.SameSiteStrictMode,
+	})
 	writeData(w, r, http.StatusOK, map[string]any{"csrf_token": csrf, "expires_at": expiresAt})
 }
 

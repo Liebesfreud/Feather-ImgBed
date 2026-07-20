@@ -169,6 +169,31 @@ func TestAuthenticationUploadListDeleteFlow(t *testing.T) {
 	}
 }
 
+func TestSessionPersistsForAtLeastFifteenDays(t *testing.T) {
+	a := newTestApp(t)
+	cookie, _ := initializeTestApp(t, a.Handler())
+
+	const minimumLifetime = 15 * 24 * time.Hour
+	if cookie.MaxAge < int(minimumLifetime/time.Second) {
+		t.Fatalf("会话 Cookie 有效期过短: %s", time.Duration(cookie.MaxAge)*time.Second)
+	}
+	if remaining := time.Until(cookie.Expires); remaining < minimumLifetime {
+		t.Fatalf("会话 Cookie 到期时间过早: %s", remaining)
+	}
+
+	var expiresAt string
+	if err := a.db.QueryRow("SELECT expires_at FROM sessions WHERE id_hash=?", hashToken(cookie.Value)).Scan(&expiresAt); err != nil {
+		t.Fatal(err)
+	}
+	expires, err := time.Parse("2006-01-02T15:04:05.000000000Z", expiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining := time.Until(expires); remaining < minimumLifetime {
+		t.Fatalf("服务端会话有效期过短: %s", remaining)
+	}
+}
+
 func TestTokenAuthenticationAndSecretMasking(t *testing.T) {
 	a := newTestApp(t)
 	handler := a.Handler()

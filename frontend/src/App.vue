@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun } from '@lucide/vue'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
-import Dither from './components/backgrounds/Dither.vue'
 import ToastHost from './components/ToastHost.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
 
+const Dither = defineAsyncComponent(() => import('./components/backgrounds/Dither.vue'))
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
@@ -58,9 +58,12 @@ async function logout() {
   router.push('/upload')
 }
 
-onMounted(async () => {
+// Start the only blocking startup request before child components mount. In
+// particular, this keeps WebGL background setup off the critical auth path.
+void auth.check()
+
+onMounted(() => {
   window.addEventListener('feather:unauthorized', resetAuth)
-  await auth.check()
 })
 
 onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
@@ -68,7 +71,7 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
 
 <template>
   <TooltipProvider :delay-duration="350">
-  <Dither class="global-dither" aria-hidden="true" :wave-color="ditherColor" :wave-speed="0.015" :wave-frequency="2.4" :wave-amplitude="0.22" :color-num="3" :pixel-size="3" :enable-mouse-interaction="false" />
+  <Dither v-if="!auth.checking" class="global-dither" aria-hidden="true" :wave-color="ditherColor" :wave-speed="0.015" :wave-frequency="2.4" :wave-amplitude="0.22" :color-num="3" :pixel-size="3" :enable-mouse-interaction="false" />
   <div v-if="auth.checking" class="app-loader" aria-label="正在加载">
     <Feather :size="38" /><span>正在展开轻羽…</span>
   </div>
