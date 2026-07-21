@@ -352,7 +352,14 @@ onBeforeUnmount(() => {
     <div v-else-if="!images.length" class="gallery-state empty-state"><div class="empty-art"><ImageOff :size="46"/></div><h2>{{ hasFilters ? '没有找到匹配的图片' : '图库还是空的' }}</h2><button v-if="hasFilters" class="soft-button" @click="clearFilters">清除筛选</button><button v-else class="primary-button" @click="router.push('/upload')"><UploadCloud :size="18"/>上传第一张图片</button></div>
     <div v-else class="image-grid">
       <article v-for="(item, index) in images" :key="item.id" class="image-card" :class="{ selected: selected.has(item.id) }" @click="openPreview(index)">
-        <div class="image-frame" :style="{ aspectRatio: `${item.width || 4} / ${item.height || 3}` }"><img :src="item.thumbnail_url || item.url" :alt="item.original_name" :loading="index < 4 ? 'eager' : 'lazy'" :fetchpriority="index === 0 ? 'high' : 'auto'" decoding="async"><UiCheckbox v-if="selectMode" class="select-check" :model-value="selected.has(item.id)" :aria-label="`选择 ${item.original_name}`" @click.stop @update:model-value="toggleSelected(item.id)" /><button v-else class="favorite-card-button" :class="{ active: item.favorite }" :disabled="favoriteBusy.has(item.id)" :aria-label="item.favorite ? `取消收藏 ${item.original_name}` : `收藏 ${item.original_name}`" @click.stop="toggleFavorite(item)"><Heart :size="17" :fill="item.favorite ? 'currentColor' : 'none'"/></button></div>
+        <div class="image-frame">
+          <img :src="item.thumbnail_url || item.url" :alt="item.original_name" :loading="index < 4 ? 'eager' : 'lazy'" :fetchpriority="index === 0 ? 'high' : 'auto'" decoding="async">
+          <UiCheckbox v-if="selectMode" class="select-check" :model-value="selected.has(item.id)" :aria-label="`选择 ${item.original_name}`" @click.stop @update:model-value="toggleSelected(item.id)" />
+          <div v-else class="image-card-actions">
+            <UiTooltip text="复制图片链接" side="bottom"><button class="image-card-action" :aria-label="`复制 ${item.original_name} 的链接`" @click.stop="copy(item, 'url')"><Link2 :size="17"/></button></UiTooltip>
+            <UiTooltip :text="item.favorite ? '取消收藏' : '收藏'" side="bottom"><button class="image-card-action favorite-card-button" :class="{ active: item.favorite }" :disabled="favoriteBusy.has(item.id)" :aria-label="item.favorite ? `取消收藏 ${item.original_name}` : `收藏 ${item.original_name}`" @click.stop="toggleFavorite(item)"><Heart :size="17" :fill="item.favorite ? 'currentColor' : 'none'"/></button></UiTooltip>
+          </div>
+        </div>
         <div class="image-caption"><div><strong :title="item.original_name">{{ item.original_name }}</strong><span>{{ formatDate(item.created_at) }}</span></div><span>{{ formatSize(item.size) }}</span></div>
       </article>
     </div>
