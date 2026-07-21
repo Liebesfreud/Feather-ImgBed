@@ -224,12 +224,15 @@ feather-imgbed backup restore -data /data /safe/feather-backup.tar.gz
 ```bash
 git clone https://github.com/Liebesfreud/Feather-ImgBed.git
 cd Feather-ImgBed
-make run        # 构建前端 + 启动服务（:8080，数据目录 ./data）
+make dev        # 一键启动前后端开发服务
 ```
+
+启动后访问 <http://127.0.0.1:5173>。前端修改会自动热更新，API 请求会代理到 `:8080`；按 `Ctrl+C` 可同时停止前后端。
 
 其它常用目标：
 
 ```bash
+make run             # 构建前端 + 启动单体服务（:8080）
 make build           # 构建前端 + 编译二进制 feather-imgbed
 make test            # 构建前端 + 运行 Go 测试（含竞态检测）
 make vet             # 构建前端 + 运行 go vet

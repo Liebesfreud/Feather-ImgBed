@@ -10,6 +10,7 @@ export default createRouter({
     { path: '/trash', name: 'trash', component: () => import('./views/TrashView.vue') },
     { path: '/albums', name: 'albums', component: () => import('./views/AlbumsView.vue') },
     { path: '/albums/:id', name: 'album-detail', component: () => import('./views/AlbumDetailView.vue') },
+    { path: '/api', name: 'api', component: () => import('./views/ApiView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/upload' },
   ],

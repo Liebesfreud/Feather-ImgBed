@@ -43,7 +43,7 @@ watch(() => props.open, (open) => {
         <header><span class="form-dialog-icon"><Tags :size="20"/></span><div><DialogTitle>{{ title }}</DialogTitle></div><DialogClose aria-label="关闭"><X :size="20"/></DialogClose></header>
         <UiSelect v-if="bulk" v-model="action" :options="actionOptions" aria-label="批量标签操作" />
         <div class="tag-picker-list">
-          <label v-for="tag in tags" :key="tag.id"><UiCheckbox :model-value="selected.has(tag.id)" :aria-label="tag.name" @update:model-value="toggle(tag.id)"/><i :style="{ background: tag.color }"></i><span>{{ tag.name }}</span><small>{{ tag.image_count }} 张</small></label>
+          <label v-for="tag in tags" :key="tag.id" :style="{ '--tag-color': tag.color || '#8a908a' }"><UiCheckbox :model-value="selected.has(tag.id)" :aria-label="tag.name" @update:model-value="toggle(tag.id)"/><i :style="{ background: tag.color }"></i><span>{{ tag.name }}</span><small>{{ tag.image_count }} 张</small></label>
           <p v-if="!tags.length" class="section-note">还没有标签</p>
         </div>
         <footer><button class="soft-button" @click="emit('update:open', false)">取消</button><button class="primary-button" :disabled="busy || (bulk && !selected.size)" @click="emit('save', { action: bulk ? action : 'replace', tagIds: [...selected] })">{{ busy ? '保存中…' : '保存标签' }}</button></footer>
