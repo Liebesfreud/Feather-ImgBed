@@ -123,7 +123,8 @@ test('图片管理统一收纳图库、相册与回收站', async ({ page }) => 
   await page.goto('/gallery')
 
   const mainNavigation = page.getByRole('navigation', { name: '主导航' })
-  await expect(mainNavigation.getByRole('link')).toHaveCount(3)
+  await expect(mainNavigation.getByRole('link')).toHaveCount(4)
+  await expect(mainNavigation.getByRole('link', { name: 'API' })).toHaveAttribute('href', '/developer')
   await expect(mainNavigation.getByRole('link', { name: '图片管理' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('查找、预览并管理所有已上传的图片。')).toHaveCount(0)
 

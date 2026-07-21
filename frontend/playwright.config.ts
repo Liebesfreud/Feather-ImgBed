@@ -11,7 +11,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], contextOptions: { reducedMotion: 'reduce' } } },
   ],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4173',

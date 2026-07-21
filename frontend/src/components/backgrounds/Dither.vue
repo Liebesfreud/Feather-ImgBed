@@ -43,6 +43,7 @@ let gl: OGLRenderingContext | null = null;
 let program: Program | null = null;
 let mesh: Mesh | null = null;
 let animationId: number | null = null;
+let reducedMotionQuery: MediaQueryList | null = null;
 let currentMouse = [0, 0];
 let targetMouse = [0, 0];
 
@@ -302,7 +303,7 @@ const update = (t: number) => {
 };
 
 const initializeScene = () => {
-  if (!containerRef.value) return;
+  if (!containerRef.value || reducedMotionQuery?.matches) return;
 
   cleanup();
 
@@ -385,11 +386,20 @@ const cleanup = () => {
   targetMouse = [0, 0];
 };
 
+const handleMotionPreferenceChange = () => {
+  if (reducedMotionQuery?.matches) cleanup();
+  else initializeScene();
+};
+
 onMounted(() => {
+  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  reducedMotionQuery.addEventListener('change', handleMotionPreferenceChange);
   initializeScene();
 });
 
 onUnmounted(() => {
+  reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange);
+  reducedMotionQuery = null;
   cleanup();
 });
 

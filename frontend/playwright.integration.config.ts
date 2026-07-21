@@ -10,7 +10,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'chromium-real-backend', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium-real-backend', use: { ...devices['Desktop Chrome'], contextOptions: { reducedMotion: 'reduce' } } },
   ],
   webServer: {
     command: `bash -lc 'data_dir="$(mktemp -d)"; trap "rm -rf \\"$data_dir\\"" EXIT; cd ..; go run . serve -listen 127.0.0.1:4174 -data "$data_dir"'`,
