@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun, Braces } from '@lucide/vue'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
@@ -7,8 +7,8 @@ import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
 import ToastHost from './components/ToastHost.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
+import Dither from './components/backgrounds/Dither.vue'
 
-const Dither = defineAsyncComponent(() => import('./components/backgrounds/Dither.vue'))
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +27,7 @@ document.documentElement.classList.toggle('light', theme.value === 'light')
 const nav = [
   { to: '/upload', label: '上传图片', icon: CloudUpload },
   { to: '/gallery', label: '图片管理', icon: Images },
-  { to: '/api', label: 'API', icon: Braces },
+  { to: '/developer', label: 'API', icon: Braces },
   { to: '/settings', label: '系统设置', icon: Settings },
 ]
 const managementPaths = ['/gallery', '/albums', '/trash']
