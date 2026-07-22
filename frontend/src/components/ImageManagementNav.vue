@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { FolderHeart, Images, Trash2 } from '@lucide/vue'
+import { FolderHeart, Images, Shuffle, Trash2 } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const items = [
   { to: '/gallery', label: '全部图片', icon: Images, active: () => route.path === '/gallery' },
   { to: '/albums', label: '相册', icon: FolderHeart, active: () => route.path.startsWith('/albums') },
+  { to: '/random', label: '随机图', icon: Shuffle, active: () => route.path === '/random' },
   { to: '/trash', label: '回收站', icon: Trash2, active: () => route.path === '/trash' },
 ]
 </script>

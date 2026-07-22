@@ -365,6 +365,28 @@ code { font-family: "JetBrains Mono", monospace }
 .album-image-copy button { height: 30px; padding: 0 7px; display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: var(--radius); background: var(--raised); color: var(--neutral); font-size: 10px }
 .album-lightbox .preview-stage>img { max-width: 100%; max-height: 100%; object-fit: contain }
 
+/* Random image */
+.random-heading>div { max-width: 680px }
+.random-overview { min-height: 116px; display: flex; align-items: center; gap: 18px; padding: 22px 24px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs) }
+.random-overview.enabled { border-color: color-mix(in srgb,var(--primary),var(--line) 48%); background: color-mix(in srgb,var(--primary-soft),var(--surface) 54%) }
+.random-overview-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: none; border-radius: var(--radius); color: var(--muted); background: var(--raised) }
+.random-overview.enabled .random-overview-icon { color: var(--primary); background: var(--primary-soft) }
+.random-overview-copy { min-width: 0; display: grid; flex: 1; gap: 4px }
+.random-overview-copy h2 { font-size: 18px }
+.random-overview-copy p { color: var(--muted); font-size: 12px; line-height: 19px }
+.random-status { width: max-content; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em }
+.random-overview.enabled .random-status { color: var(--primary) }
+.random-warning { display: flex; align-items: center; gap: 10px; margin-top: -10px; padding: 12px 14px; border: 1px solid color-mix(in srgb,#d99824,var(--line) 42%); border-radius: var(--radius); color: #b77912; background: color-mix(in srgb,#d99824,transparent 91%); font-size: 12px }
+.random-warning span { display: flex; flex-wrap: wrap; gap: 5px }
+.random-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px }
+.random-layout .form-section { min-width: 0; margin-top: 0 }
+.random-scope-summary { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 20px }
+.random-endpoint-card>p { margin: -7px 0 18px; color: var(--muted); font-size: 12px; line-height: 20px }
+.random-endpoint-card>p code { color: var(--text) }
+.random-endpoint { display: flex; align-items: center; gap: 10px }
+.random-endpoint>code { min-width: 0; flex: 1; overflow: hidden; padding: 12px 13px; border-radius: var(--radius); background: var(--raised); color: var(--text); text-overflow: ellipsis; white-space: nowrap }
+.random-endpoint .soft-button { flex: none; padding-inline: 14px }
+
 /* Settings */
 .settings-layout { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 32px; min-height: 720px }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; padding-top: 6px }
@@ -460,6 +482,7 @@ code { font-family: "JetBrains Mono", monospace }
   .trash-grid { grid-template-columns: repeat(3,minmax(0,1fr)) }
   .album-grid { grid-template-columns: repeat(2,minmax(0,1fr)) }
   .album-image-grid { grid-template-columns: repeat(3,minmax(0,1fr)) }
+  .random-layout { grid-template-columns: 1fr }
   .settings-layout { grid-template-columns: 1fr; gap: 22px }.settings-nav { flex-direction: row; overflow-x: auto; padding: 0 0 8px }.settings-nav h2 { display: none }.settings-nav button { width: max-content; flex: none }
   .auth-page { grid-template-columns: 1fr }.auth-story { display: none }.auth-panel { min-height: 100vh; background: var(--bg) }.lightbox { padding: 16px }.lightbox-panel { max-height: calc(100vh - 32px) }.preview-info { align-items: flex-start; flex-direction: column }.preview-actions { width: 100%; flex-wrap: wrap }
 }
@@ -535,6 +558,12 @@ code { font-family: "JetBrains Mono", monospace }
   .album-detail-heading>div:last-child { align-items: stretch; flex-direction: column }
   .album-detail-heading>div:last-child .soft-button { width: 100% }
   .album-image-grid { grid-template-columns: repeat(2,minmax(0,1fr)) }
+  .random-overview { align-items: flex-start; flex-wrap: wrap; padding: 18px 16px }
+  .random-overview-copy { flex-basis: calc(100% - 66px) }
+  .random-overview>.ui-switch { margin-left: 66px }
+  .random-warning { align-items: flex-start }
+  .random-endpoint { align-items: stretch; flex-direction: column }
+  .random-endpoint .soft-button { width: 100% }
   .settings-layout { gap: 24px }
   .settings-nav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; overflow: visible; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface) }
   .settings-nav button { width: 100%; height: 58px; flex-direction: column; justify-content: center; gap: 4px; padding: 5px 2px; font-size: 11px }
