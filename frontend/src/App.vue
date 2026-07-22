@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun, Braces } from '@lucide/vue'
-import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, TooltipProvider } from 'reka-ui'
 import { useAuthStore } from './stores/auth'
 import AuthScreen from './components/AuthScreen.vue'
-import ToastHost from './components/ToastHost.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
-import Dither from './components/backgrounds/Dither.vue'
+
+const Dither = defineAsyncComponent(() => import('./components/backgrounds/Dither.vue'))
+const ToastHost = defineAsyncComponent(() => import('./components/ToastHost.vue'))
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const menuOpen = ref(false)
+const accountMenuRoot = ref<HTMLElement>()
+const accountMenuButton = ref<HTMLButtonElement>()
+const accountMenuItem = ref<HTMLButtonElement>()
 const theme = ref<'light' | 'dark'>('dark')
+const showDither = ref(false)
+const showToastHost = ref(false)
+let ditherDelay: number | null = null
+let ditherIdleRequest: number | null = null
+let toastDelay: number | null = null
 
 const savedTheme = localStorage.getItem('feather-theme')
 if (savedTheme === 'light' || savedTheme === 'dark') {
@@ -59,20 +67,78 @@ async function logout() {
   router.push('/upload')
 }
 
-// Start the only blocking startup request before child components mount. In
-// particular, this keeps WebGL background setup off the critical auth path.
-void auth.check()
+function toggleAccountMenu() {
+  menuOpen.value = !menuOpen.value
+  if (menuOpen.value) void nextTick(() => accountMenuItem.value?.focus())
+}
+
+function closeAccountMenuOnOutsideClick(event: PointerEvent) {
+  if (menuOpen.value && !accountMenuRoot.value?.contains(event.target as Node)) menuOpen.value = false
+}
+
+function closeAccountMenuOnEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !menuOpen.value) return
+  menuOpen.value = false
+  accountMenuButton.value?.focus()
+}
+
+function closeAccountMenuOnFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as Node | null
+  if (!next || !accountMenuRoot.value?.contains(next)) menuOpen.value = false
+}
+
+function scheduleDither() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  ditherDelay = window.setTimeout(() => {
+    ditherDelay = null
+    if ('requestIdleCallback' in window) {
+      ditherIdleRequest = window.requestIdleCallback(() => {
+        ditherIdleRequest = null
+        showDither.value = true
+      }, { timeout: 1600 })
+    } else {
+      showDither.value = true
+    }
+  }, 900)
+}
+
+async function initializeApp() {
+  try {
+    await auth.check()
+  } catch {
+    // The auth store leaves checking state consistently; the existing screen
+    // can still present a retryable authentication flow.
+  } finally {
+    toastDelay = window.setTimeout(() => {
+      toastDelay = null
+      showToastHost.value = true
+    }, 300)
+    scheduleDither()
+  }
+}
+
+void initializeApp()
 
 onMounted(() => {
   window.addEventListener('feather:unauthorized', resetAuth)
+  document.addEventListener('pointerdown', closeAccountMenuOnOutsideClick)
+  document.addEventListener('keydown', closeAccountMenuOnEscape)
 })
 
-onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
+onUnmounted(() => {
+  window.removeEventListener('feather:unauthorized', resetAuth)
+  document.removeEventListener('pointerdown', closeAccountMenuOnOutsideClick)
+  document.removeEventListener('keydown', closeAccountMenuOnEscape)
+  if (ditherDelay !== null) window.clearTimeout(ditherDelay)
+  if (ditherIdleRequest !== null) window.cancelIdleCallback(ditherIdleRequest)
+  if (toastDelay !== null) window.clearTimeout(toastDelay)
+})
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="350">
-  <Dither v-if="!auth.checking" class="global-dither" aria-hidden="true" :wave-color="ditherColor" :wave-speed="0.015" :wave-frequency="2.4" :wave-amplitude="0.22" :color-num="3" :pixel-size="3" :enable-mouse-interaction="false" />
+  <div v-if="!auth.checking" class="global-dither" aria-hidden="true">
+    <Dither v-if="showDither" :wave-color="ditherColor" :wave-speed="0.015" :wave-frequency="2.4" :wave-amplitude="0.22" :color-num="3" :pixel-size="1.5" :render-scale="0.5" :max-fps="24" :enable-mouse-interaction="false" />
+  </div>
   <div v-if="auth.checking" class="app-loader" aria-label="正在加载">
     <Feather :size="38" /><span>正在展开轻羽…</span>
   </div>
@@ -98,12 +164,12 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
         <UiTooltip :text="isDark ? '切换到浅色模式' : '切换到深色模式'"><button class="topbar-control theme-button" type="button" :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme">
           <Sun v-if="isDark" :size="19" /><Moon v-else :size="19" />
         </button></UiTooltip>
-        <DropdownMenuRoot v-model:open="menuOpen">
-          <DropdownMenuTrigger as-child><button class="topbar-control account-button" aria-label="打开用户菜单" title="用户菜单"><UserRound :size="19" /></button></DropdownMenuTrigger>
-          <DropdownMenuPortal><DropdownMenuContent class="account-menu" :side-offset="8" align="end">
-            <DropdownMenuItem class="account-menu-item" @select="logout"><LogOut :size="17" />退出登录</DropdownMenuItem>
-          </DropdownMenuContent></DropdownMenuPortal>
-        </DropdownMenuRoot>
+        <div ref="accountMenuRoot" class="account-menu-root" :class="{ open: menuOpen }" @focusout="closeAccountMenuOnFocusOut">
+          <button ref="accountMenuButton" class="topbar-control account-button" aria-label="打开用户菜单" title="用户菜单" aria-haspopup="menu" :aria-expanded="menuOpen" @click="toggleAccountMenu"><UserRound :size="19" /></button>
+          <div v-if="menuOpen" class="account-menu" role="menu">
+            <button ref="accountMenuItem" class="account-menu-item" type="button" role="menuitem" @click="logout"><LogOut :size="17" />退出登录</button>
+          </div>
+        </div>
       </div>
     </header>
     <main class="page">
@@ -116,6 +182,5 @@ onUnmounted(() => window.removeEventListener('feather:unauthorized', resetAuth))
       </RouterView>
     </main>
   </div>
-  <ToastHost />
-  </TooltipProvider>
+  <ToastHost v-if="showToastHost" />
 </template>

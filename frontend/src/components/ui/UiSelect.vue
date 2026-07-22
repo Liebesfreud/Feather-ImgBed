@@ -1,17 +1,5 @@
 <script setup lang="ts">
-import { Check, ChevronDown } from '@lucide/vue'
-import {
-  SelectContent,
-  SelectIcon,
-  SelectItem,
-  SelectItemIndicator,
-  SelectItemText,
-  SelectPortal,
-  SelectRoot,
-  SelectTrigger,
-  SelectValue,
-  SelectViewport,
-} from 'reka-ui'
+import { ChevronDown } from '@lucide/vue'
 
 defineProps<{
   modelValue: string
@@ -21,23 +9,18 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+
+function updateValue(event: Event) {
+  emit('update:modelValue', (event.target as HTMLSelectElement).value)
+}
 </script>
 
 <template>
-  <SelectRoot :model-value="modelValue" @update:model-value="emit('update:modelValue', String($event))">
-    <SelectTrigger class="ui-select-trigger" :aria-label="ariaLabel">
-      <SelectValue :placeholder="placeholder" />
-      <SelectIcon class="ui-select-icon"><ChevronDown :size="16" /></SelectIcon>
-    </SelectTrigger>
-    <SelectPortal>
-      <SelectContent class="ui-select-content" position="popper" :side-offset="6">
-        <SelectViewport class="ui-select-viewport">
-          <SelectItem v-for="option in options" :key="option.value" class="ui-select-item" :value="option.value" :disabled="option.disabled">
-            <SelectItemText>{{ option.label }}</SelectItemText>
-            <SelectItemIndicator class="ui-select-indicator"><Check :size="15" /></SelectItemIndicator>
-          </SelectItem>
-        </SelectViewport>
-      </SelectContent>
-    </SelectPortal>
-  </SelectRoot>
+  <span class="ui-select-native">
+    <select class="ui-select-trigger" :value="modelValue" :aria-label="ariaLabel" @change="updateValue">
+      <option v-if="placeholder" value="" disabled>{{ placeholder }}</option>
+      <option v-for="option in options" :key="option.value" :value="option.value" :disabled="option.disabled">{{ option.label }}</option>
+    </select>
+    <ChevronDown class="ui-select-icon" :size="16" aria-hidden="true" />
+  </span>
 </template>

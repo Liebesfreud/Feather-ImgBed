@@ -22,6 +22,8 @@ interface DitherProps {
   disableAnimation?: boolean;
   enableMouseInteraction?: boolean;
   mouseRadius?: number;
+  renderScale?: number;
+  maxFps?: number;
 }
 
 const props = withDefaults(defineProps<DitherProps>(), {
@@ -33,7 +35,9 @@ const props = withDefaults(defineProps<DitherProps>(), {
   pixelSize: 2,
   disableAnimation: false,
   enableMouseInteraction: true,
-  mouseRadius: 1
+  mouseRadius: 1,
+  renderScale: 0.5,
+  maxFps: 24
 });
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef');
@@ -44,6 +48,7 @@ let program: Program | null = null;
 let mesh: Mesh | null = null;
 let animationId: number | null = null;
 let reducedMotionQuery: MediaQueryList | null = null;
+let lastFrameTime = 0;
 let currentMouse = [0, 0];
 let targetMouse = [0, 0];
 
@@ -107,7 +112,7 @@ float cnoise(vec2 P) {
   return 2.3 * mix(n_x.x, n_x.y, fade_xy.y);
 }
 
-const int OCTAVES = 8;
+const int OCTAVES = 5;
 float fbm(vec2 p) {
   float value = 0.0;
   float amp = 1.0;
@@ -241,9 +246,12 @@ const resize = () => {
 
   const container = containerRef.value;
   const { clientWidth, clientHeight } = container;
-  renderer.setSize(clientWidth, clientHeight);
-  program.uniforms.resolution.value[0] = clientWidth;
-  program.uniforms.resolution.value[1] = clientHeight;
+  const scale = Math.min(1, Math.max(0.25, props.renderScale));
+  const width = Math.max(1, Math.round(clientWidth * scale));
+  const height = Math.max(1, Math.round(clientHeight * scale));
+  renderer.setSize(width, height);
+  program.uniforms.resolution.value[0] = gl?.canvas.width || width;
+  program.uniforms.resolution.value[1] = gl?.canvas.height || height;
 };
 
 const handleMouseMove = (e: MouseEvent) => {
@@ -266,9 +274,18 @@ const handleMouseLeave = () => {
 };
 
 const update = (t: number) => {
+  animationId = null;
   if (!program || !renderer || !mesh) return;
 
-  const shouldAnimate = !props.disableAnimation && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const shouldAnimate = !props.disableAnimation && !reducedMotionQuery?.matches;
+  if (document.hidden) return;
+
+  const frameInterval = 1000 / Math.min(60, Math.max(1, props.maxFps));
+  if (shouldAnimate && lastFrameTime > 0 && t - lastFrameTime < frameInterval) {
+    animationId = requestAnimationFrame(update);
+    return;
+  }
+  lastFrameTime = t;
 
   if (props.enableMouseInteraction) {
     const smoothing = 0.05;
@@ -276,30 +293,26 @@ const update = (t: number) => {
     currentMouse[1] += smoothing * (targetMouse[1] - currentMouse[1]);
     program.uniforms.mousePos.value[0] = currentMouse[0];
     program.uniforms.mousePos.value[1] = currentMouse[1];
-  } else {
-    if (gl) {
-      program.uniforms.mousePos.value[0] = gl.canvas.width / 2;
-      program.uniforms.mousePos.value[1] = gl.canvas.height / 2;
-    }
   }
 
   if (shouldAnimate) {
     program.uniforms.time.value = t * 0.001;
   }
 
-  program.uniforms.waveSpeed.value = props.waveSpeed;
-  program.uniforms.waveFrequency.value = props.waveFrequency;
-  program.uniforms.waveAmplitude.value = props.waveAmplitude;
-  program.uniforms.waveColor.value.r = props.waveColor[0];
-  program.uniforms.waveColor.value.g = props.waveColor[1];
-  program.uniforms.waveColor.value.b = props.waveColor[2];
-  program.uniforms.enableMouseInteraction.value = props.enableMouseInteraction ? 1 : 0;
-  program.uniforms.mouseRadius.value = props.mouseRadius;
-  program.uniforms.colorNum.value = props.colorNum;
-  program.uniforms.pixelSize.value = props.pixelSize;
-
   renderer.render({ scene: mesh });
   animationId = shouldAnimate ? requestAnimationFrame(update) : null;
+};
+
+const handleVisibilityChange = () => {
+  if (document.hidden) {
+    if (animationId !== null) cancelAnimationFrame(animationId);
+    animationId = null;
+    return;
+  }
+  if (program && renderer && mesh && animationId === null) {
+    lastFrameTime = 0;
+    animationId = requestAnimationFrame(update);
+  }
 };
 
 const initializeScene = () => {
@@ -309,14 +322,19 @@ const initializeScene = () => {
 
   const container = containerRef.value;
   try {
-    renderer = new Renderer({ alpha: true });
+    renderer = new Renderer({
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      dpr: 1,
+      powerPreference: 'low-power'
+    });
   } catch {
     return;
   }
   gl = renderer.gl;
   gl.clearColor(0, 0, 0, 0);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   const geometry = new Triangle(gl);
   program = new Program(gl, {
@@ -353,6 +371,7 @@ const initializeScene = () => {
   }
 
   resize();
+  lastFrameTime = 0;
   animationId = requestAnimationFrame(update);
 };
 
@@ -382,6 +401,7 @@ const cleanup = () => {
   gl = null;
   program = null;
   mesh = null;
+  lastFrameTime = 0;
   currentMouse = [0, 0];
   targetMouse = [0, 0];
 };
@@ -394,11 +414,13 @@ const handleMotionPreferenceChange = () => {
 onMounted(() => {
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   reducedMotionQuery.addEventListener('change', handleMotionPreferenceChange);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   initializeScene();
 });
 
 onUnmounted(() => {
   reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   reducedMotionQuery = null;
   cleanup();
 });

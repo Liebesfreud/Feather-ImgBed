@@ -13,19 +13,24 @@ type uploadStatistics struct {
 }
 
 func (a *App) getStatistics(w http.ResponseWriter, r *http.Request) {
+	statistics, err := a.loadUploadStatistics(r.Context())
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "STATISTICS_READ_FAILED", "统计数据暂时无法读取")
+		return
+	}
+	writeData(w, r, http.StatusOK, statistics)
+}
+
+func (a *App) loadUploadStatistics(ctx context.Context) (uploadStatistics, error) {
 	var statistics uploadStatistics
-	err := a.db.QueryRowContext(r.Context(), `
+	err := a.db.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM images WHERE deleted_at IS NULL),
 			(SELECT COALESCE(SUM(size),0) FROM images) +
 				(SELECT COALESCE(SUM(size),0) FROM image_variants),
 			COALESCE((SELECT value FROM usage_stats WHERE key='traffic_bytes'),0)
 	`).Scan(&statistics.ImageCount, &statistics.StorageBytes, &statistics.TrafficBytes)
-	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "STATISTICS_READ_FAILED", "统计数据暂时无法读取")
-		return
-	}
-	writeData(w, r, http.StatusOK, statistics)
+	return statistics, err
 }
 
 func (a *App) recordTraffic(bytes int64) error {

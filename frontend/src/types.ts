@@ -77,6 +77,18 @@ export interface Settings {
   processing: ProcessingSettings
 }
 
+export interface UploadStatistics {
+  image_count: number
+  storage_bytes: number
+  traffic_bytes: number
+}
+
+export interface UploadBootstrap {
+  storages: StorageRecord[]
+  settings: Settings
+  statistics: UploadStatistics
+}
+
 export interface ProcessingSettings {
   generate_webp: boolean
   webp_quality: number

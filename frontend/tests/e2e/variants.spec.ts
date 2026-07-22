@@ -20,8 +20,7 @@ test('图片详情可切换派生版本并复制对应链接', async ({ page, co
 
   await page.goto('/gallery')
   await page.getByRole('img', { name: 'cat.jpg' }).click()
-  await page.getByLabel('选择图片版本').click()
-  await page.getByRole('option', { name: 'WebP' }).click()
+  await page.getByLabel('选择图片版本').selectOption({ label: 'WebP' })
   await page.getByRole('button', { name: '复制链接' }).click()
 
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('https://img.example.com/image.webp')

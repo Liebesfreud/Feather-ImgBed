@@ -1,12 +1,20 @@
-<script setup lang="ts">
-import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui'
+<script lang="ts">
+import { cloneVNode, defineComponent } from 'vue'
 
-withDefaults(defineProps<{ text: string; side?: 'top' | 'right' | 'bottom' | 'left' }>(), { side: 'bottom' })
+export default defineComponent({
+  name: 'UiTooltip',
+  inheritAttrs: false,
+  props: {
+    text: { type: String, required: true },
+    side: { type: String, default: 'bottom' },
+  },
+  setup(props, { attrs, slots }) {
+    return () => {
+      const children = slots.default?.() || []
+      if (!children.length) return null
+      if (children.length > 1) return children
+      return cloneVNode(children[0], { ...attrs, title: props.text })
+    }
+  },
+})
 </script>
-
-<template>
-  <TooltipRoot>
-    <TooltipTrigger as-child><slot /></TooltipTrigger>
-    <TooltipPortal><TooltipContent class="ui-tooltip" :side="side" :side-offset="7">{{ text }}</TooltipContent></TooltipPortal>
-  </TooltipRoot>
-</template>

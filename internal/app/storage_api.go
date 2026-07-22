@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strings"
@@ -72,10 +73,18 @@ func validateStorage(record StorageRecord) string {
 }
 
 func (a *App) listStorages(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), "SELECT id,name,type,enabled,config,created_at,updated_at FROM storages ORDER BY created_at")
+	items, err := a.storageRecords(r.Context())
 	if err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "读取存储配置失败")
 		return
+	}
+	writeData(w, r, 200, items)
+}
+
+func (a *App) storageRecords(ctx context.Context) ([]StorageRecord, error) {
+	rows, err := a.db.QueryContext(ctx, "SELECT id,name,type,enabled,config,created_at,updated_at FROM storages ORDER BY created_at")
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	items := make([]StorageRecord, 0)
@@ -84,8 +93,7 @@ func (a *App) listStorages(w http.ResponseWriter, r *http.Request) {
 		var enabled int
 		var encrypted string
 		if err := rows.Scan(&item.ID, &item.Name, &item.Type, &enabled, &encrypted, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			writeError(w, r, 500, "DATABASE_ERROR", "读取存储配置失败")
-			return
+			return nil, err
 		}
 		item.Enabled = enabled == 1
 		item.Config = map[string]any{}
@@ -97,10 +105,9 @@ func (a *App) listStorages(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		writeError(w, r, 500, "DATABASE_ERROR", "读取存储配置失败")
-		return
+		return nil, err
 	}
-	writeData(w, r, 200, items)
+	return items, nil
 }
 
 func (a *App) testStorage(w http.ResponseWriter, r *http.Request) {

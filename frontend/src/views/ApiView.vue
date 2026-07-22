@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@fontsource/jetbrains-mono/latin-400.css'
 import { computed, onMounted, ref } from 'vue'
 import { BookOpen, Check, Copy, KeyRound, LoaderCircle, Plus, RefreshCw, ShieldCheck, Terminal, Trash2, Zap } from '@lucide/vue'
 import { api, deleteJSON, postJSON } from '../api'

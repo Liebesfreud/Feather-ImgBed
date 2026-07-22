@@ -22,6 +22,7 @@ func (a *App) initialized(ctx context.Context) (bool, error) {
 }
 
 func (a *App) authStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	initialized, err := a.initialized(r.Context())
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "无法读取初始化状态")
@@ -33,6 +34,22 @@ func (a *App) authStatus(w http.ResponseWriter, r *http.Request) {
 	// or when the session cookie is opened in a new tab. Bearer clients do not need it.
 	if authenticated && p.ViaSession {
 		data["csrf_token"] = p.CSRFToken
+		settings, settingsErr := loadSettings(r.Context(), a.db)
+		storages, storagesErr := a.storageRecords(r.Context())
+		statistics, statisticsErr := a.loadUploadStatistics(r.Context())
+		if settingsErr == nil && storagesErr == nil && statisticsErr == nil {
+			data["upload"] = map[string]any{
+				"storages":   storages,
+				"settings":   settings,
+				"statistics": statistics,
+			}
+		} else {
+			a.logger.Warn("启动数据聚合失败",
+				"settings_error", settingsErr,
+				"storages_error", storagesErr,
+				"statistics_error", statisticsErr,
+			)
+		}
 	}
 	writeData(w, r, http.StatusOK, data)
 }

@@ -3,9 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CloudUpload, ImagePlus, CheckCircle2, CircleAlert, LoaderCircle, RotateCcw, Link2, Code2, FileCode2, Copy, Trash2, Database, X, Braces, Clock3, RefreshCw } from '@lucide/vue'
 import { api, ApiError, postJSON, uploadFile } from '../api'
 import { toast } from '../toast'
-import type { ImageItem, Settings, StorageRecord } from '../types'
+import type { ImageItem, Settings, StorageRecord, UploadStatistics } from '../types'
 import { formatImageLink, joinImageLinks, readCopyPreferences, type LinkFormat } from '../linkFormats'
 import UiSelect from '../components/ui/UiSelect.vue'
+import { useAuthStore } from '../stores/auth'
 
 interface QueueItem {
   id: string
@@ -20,13 +21,8 @@ interface QueueItem {
   cancel?: () => void
 }
 
-interface UploadStatistics {
-  image_count: number
-  storage_bytes: number
-  traffic_bytes: number
-}
-
 const MAX_CONCURRENT_UPLOADS = 3
+const auth = useAuthStore()
 const input = ref<HTMLInputElement>()
 const queue = ref<QueueItem[]>([])
 const dragging = ref(false)
@@ -223,8 +219,16 @@ async function loadStatistics() {
 onMounted(() => {
   document.addEventListener('paste', onPaste)
   window.addEventListener('beforeunload', beforeUnload)
-  void loadUploadOptions()
-  void loadStatistics()
+  const bootstrap = auth.takeUploadBootstrap()
+  if (bootstrap) {
+    storages.value = bootstrap.storages
+    settings.value = bootstrap.settings
+    statistics.value = bootstrap.statistics
+    selectedStorage.value = bootstrap.settings.default_storage_id
+  } else {
+    void loadUploadOptions()
+    void loadStatistics()
+  }
 })
 onBeforeUnmount(() => {
   document.removeEventListener('paste', onPaste)

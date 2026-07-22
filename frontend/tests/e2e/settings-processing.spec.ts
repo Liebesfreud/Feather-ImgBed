@@ -41,8 +41,7 @@ test('设置页保存 WebP 与水印派生配置', async ({ page }) => {
   await page.getByLabel('WebP 质量').fill('88')
   await page.getByRole('switch', { name: '生成水印版本' }).click()
   await page.getByLabel('水印文字').fill('Feather')
-  await page.getByLabel('水印位置').click()
-  await page.getByRole('option', { name: '左上角' }).click()
+  await page.getByLabel('水印位置').selectOption({ label: '左上角' })
   await page.getByRole('button', { name: '保存设置' }).click()
 
   await expect.poll(() => saved?.processing).toEqual({
