@@ -3,7 +3,9 @@ module feather-imgbed
 go 1.25.0
 
 require (
+	filippo.io/age v1.2.1
 	github.com/deepteams/webp v1.2.4
+	github.com/disintegration/imaging v1.6.2
 	github.com/minio/minio-go/v7 v7.2.1
 	golang.org/x/crypto v0.51.0
 	golang.org/x/image v0.44.0
@@ -13,7 +15,6 @@ require (
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect

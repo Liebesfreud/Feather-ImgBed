@@ -72,13 +72,23 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_FORMAT", "format 只能是 json 或留空")
 		return
 	}
+	settings, err := loadSettings(r.Context(), a.db)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取随机图设置失败")
+		return
+	}
+	if !settings.Random.Enabled {
+		writeError(w, r, http.StatusNotFound, "RANDOM_IMAGE_DISABLED", "随机图功能未启用")
+		return
+	}
 	storageID := strings.TrimSpace(r.URL.Query().Get("storage_id"))
-	maxQuery := "SELECT COALESCE(MAX(rowid),0) FROM images WHERE deleted_at IS NULL"
+	maxQuery := "SELECT COALESCE(MAX(i.rowid),0) FROM images i WHERE i.deleted_at IS NULL"
 	maxArgs := []any{}
 	if storageID != "" {
-		maxQuery += " AND storage_id=?"
+		maxQuery += " AND i.storage_id=?"
 		maxArgs = append(maxArgs, storageID)
 	}
+	maxQuery, maxArgs = applyRandomScope(maxQuery, maxArgs, settings.Random)
 	var maxRowID int64
 	if err := a.db.QueryRowContext(r.Context(), maxQuery, maxArgs...).Scan(&maxRowID); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取随机图片失败")
@@ -90,6 +100,7 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 		query += " AND i.storage_id=?"
 		args = append(args, storageID)
 	}
+	query, args = applyRandomScope(query, args, settings.Random)
 	if maxRowID > 0 {
 		query += " AND i.rowid>=((random() & 9223372036854775807) % ?) ORDER BY i.rowid LIMIT 1"
 		args = append(args, maxRowID+1)
@@ -104,6 +115,7 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 			fallback += " AND i.storage_id=?"
 			fallbackArgs = append(fallbackArgs, storageID)
 		}
+		fallback, fallbackArgs = applyRandomScope(fallback, fallbackArgs, settings.Random)
 		fallback += " ORDER BY i.rowid LIMIT 1"
 		img, err = scanImage(a.db.QueryRowContext(r.Context(), fallback, fallbackArgs...))
 	}
@@ -125,6 +137,18 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Location", img.PublicURL)
 	w.WriteHeader(http.StatusFound)
+}
+
+func applyRandomScope(query string, args []any, settings RandomSettings) (string, []any) {
+	if settings.AlbumID != "" {
+		query += " AND EXISTS(SELECT 1 FROM album_images ai WHERE ai.image_id=i.id AND ai.album_id=?)"
+		args = append(args, settings.AlbumID)
+	}
+	if settings.TagID != "" {
+		query += " AND EXISTS(SELECT 1 FROM image_tags it WHERE it.image_id=i.id AND it.tag_id=?)"
+		args = append(args, settings.TagID)
+	}
+	return query, args
 }
 
 func (a *App) listImages(w http.ResponseWriter, r *http.Request) {

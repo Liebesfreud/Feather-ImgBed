@@ -209,6 +209,9 @@ paths:
     get:
       tags: [Images]
       summary: 获取随机图片
+      description: |
+        公开接口，但默认关闭。管理员可在 Settings.random 中启用，并可限定到指定相册、
+        标签或两者交集。响应禁止浏览器缓存。
       security: []
       parameters:
         - { name: format, in: query, schema: { type: string, enum: [json] } }
@@ -216,7 +219,12 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/Success" }
         "302": { description: 重定向到图片 }
-        "404": { $ref: "#/components/responses/Error" }
+        "404":
+          description: 随机图未启用（RANDOM_IMAGE_DISABLED）或没有符合隐私范围的图片（RANDOM_IMAGE_NOT_FOUND）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /trash:
     get:
       tags: [Images]
@@ -415,13 +423,21 @@ paths:
       summary: 查询系统设置
       x-required-token-scope: images:read
       responses:
-        "200": { $ref: "#/components/responses/Success" }
+        "200": { $ref: "#/components/responses/SettingsSuccess" }
     put:
       tags: [System]
       summary: 更新系统设置
+      description: 使用完整 Settings 对象替换当前设置；random 默认关闭。
       x-required-token-scope: settings:admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Settings"
       responses:
-        "200": { $ref: "#/components/responses/Success" }
+        "200": { $ref: "#/components/responses/SettingsSuccess" }
+        "400": { $ref: "#/components/responses/Error" }
   /system:
     get:
       tags: [System]
@@ -465,6 +481,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    SettingsSuccess:
+      description: 系统设置
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SettingsEnvelope"
   schemas:
     TokenScope:
       type: string
@@ -486,6 +508,77 @@ components:
           minItems: 1
           uniqueItems: true
           items: { $ref: "#/components/schemas/TokenScope" }
+    Settings:
+      type: object
+      required:
+        - site_name
+        - site_url
+        - default_storage_id
+        - max_file_size
+        - max_batch_count
+        - allowed_types
+        - naming_rule
+        - allow_duplicates
+        - random
+        - processing
+      properties:
+        site_name: { type: string, minLength: 1, maxLength: 100 }
+        site_url:
+          type: string
+          description: 可为空；非空时必须是 HTTP 或 HTTPS 地址。
+        default_storage_id: { type: string }
+        max_file_size: { type: integer, minimum: 1024, maximum: 1073741824 }
+        max_batch_count: { type: integer, minimum: 1, maximum: 100 }
+        allowed_types:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [image/jpeg, image/png, image/gif, image/webp] }
+        naming_rule: { type: string, enum: [random, date, original] }
+        allow_duplicates: { type: boolean }
+        random: { $ref: "#/components/schemas/RandomSettings" }
+        processing: { $ref: "#/components/schemas/ProcessingSettings" }
+    RandomSettings:
+      type: object
+      required: [enabled, album_id, tag_id]
+      properties:
+        enabled:
+          type: boolean
+          default: false
+          description: 是否开放无需认证的随机图 API。
+        album_id:
+          type: string
+          maxLength: 100
+          description: 可为空；非空时只允许该相册中的图片。
+        tag_id:
+          type: string
+          maxLength: 100
+          description: 可为空；非空时只允许带有该标签的图片。与 album_id 同时设置时取交集。
+    ProcessingSettings:
+      type: object
+      required:
+        - generate_webp
+        - webp_quality
+        - strip_metadata
+        - watermark_enabled
+        - watermark_text
+        - watermark_position
+      properties:
+        generate_webp: { type: boolean }
+        webp_quality: { type: integer, minimum: 1, maximum: 100 }
+        strip_metadata: { type: boolean }
+        watermark_enabled: { type: boolean }
+        watermark_text: { type: string, maxLength: 200 }
+        watermark_position:
+          type: string
+          enum: [top-left, top-right, bottom-left, bottom-right, center]
+    SettingsEnvelope:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: { const: true }
+        data: { $ref: "#/components/schemas/Settings" }
+        request_id: { type: string }
     SuccessEnvelope:
       type: object
       required: [success, data, request_id]

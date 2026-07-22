@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +18,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"filippo.io/age"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -41,9 +46,22 @@ type BackupManifest struct {
 }
 
 type BackupReport struct {
-	Path     string         `json:"path"`
-	Manifest BackupManifest `json:"manifest"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Path      string         `json:"path"`
+	Manifest  BackupManifest `json:"manifest"`
+	Encrypted bool           `json:"encrypted"`
+	Warnings  []string       `json:"warnings,omitempty"`
+}
+
+type BackupOptions struct {
+	Passphrase string
+}
+
+type BackupVerificationReport struct {
+	Path       string         `json:"path"`
+	Encrypted  bool           `json:"encrypted"`
+	Manifest   BackupManifest `json:"manifest"`
+	DatabaseOK bool           `json:"database_ok"`
+	LocalFiles int            `json:"local_files"`
 }
 
 type backupSource struct {
@@ -52,29 +70,105 @@ type backupSource struct {
 	Info        os.FileInfo
 }
 
-// CreateBackup creates an offline tar.gz snapshot. Callers must ensure the
-// server is stopped so SQLite and local objects cannot change during the copy.
+// createDatabaseSnapshot uses SQLite's VACUUM INTO so backups can be created
+// while the service is running without copying an inconsistent db/WAL pair.
+func createDatabaseSnapshot(ctx context.Context, dataDir string) (string, func(), error) {
+	databasePath := filepath.Join(dataDir, "feather.db")
+	if _, err := os.Stat(databasePath); err != nil {
+		return "", func() {}, fmt.Errorf("数据库文件不可用: %w", err)
+	}
+	tempDir := filepath.Join(dataDir, "tmp")
+	if err := os.MkdirAll(tempDir, 0700); err != nil {
+		return "", func() {}, fmt.Errorf("创建数据库快照临时目录失败: %w", err)
+	}
+	temp, err := os.CreateTemp(tempDir, "feather-db-snapshot-*.db")
+	if err != nil {
+		return "", func() {}, err
+	}
+	snapshot := temp.Name()
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(snapshot)
+		return "", func() {}, err
+	}
+	if err := os.Remove(snapshot); err != nil {
+		return "", func() {}, err
+	}
+	db, err := sql.Open("sqlite", "file:"+databasePath+"?_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)")
+	if err != nil {
+		return "", func() {}, err
+	}
+	db.SetMaxOpenConns(1)
+	cleanup := func() {
+		_ = db.Close()
+		_ = os.Remove(snapshot)
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("打开数据库快照源失败: %w", err)
+	}
+	if _, err := db.ExecContext(pingCtx, "VACUUM INTO ?", snapshot); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("创建数据库一致性快照失败: %w", err)
+	}
+	if info, err := os.Stat(snapshot); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		cleanup()
+		if err == nil {
+			err = errors.New("快照文件为空")
+		}
+		return "", func() {}, fmt.Errorf("数据库快照无效: %w", err)
+	}
+	// The returned cleanup must remain valid after this function returns, while
+	// the database connection itself can be closed immediately.
+	_ = db.Close()
+	return snapshot, func() { _ = os.Remove(snapshot) }, nil
+}
+
+// CreateBackup keeps the legacy unencrypted tar.gz behavior. The database is
+// snapshotted consistently; local objects are hashed again while archiving.
 func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport, error) {
+	return CreateBackupWithOptions(ctx, cfg, output, BackupOptions{})
+}
+
+func CreateBackupWithOptions(ctx context.Context, cfg Config, output string, options BackupOptions) (BackupReport, error) {
 	dataDir, err := filepath.Abs(cfg.DataDir)
 	if err != nil {
 		return BackupReport{}, err
 	}
+	if options.Passphrase != "" && len([]rune(options.Passphrase)) < 12 {
+		return BackupReport{}, errors.New("备份加密口令至少需要 12 个字符")
+	}
 	if output == "" {
-		output = filepath.Join(dataDir, "backups", "feather-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
+		extension := ".tar.gz"
+		if options.Passphrase != "" {
+			extension += ".age"
+		}
+		output = filepath.Join(dataDir, "backups", "feather-"+time.Now().UTC().Format("20060102T150405Z")+extension)
 	}
 	output, err = filepath.Abs(output)
 	if err != nil {
 		return BackupReport{}, err
 	}
+	if _, err := os.Lstat(output); err == nil {
+		return BackupReport{}, errors.New("备份输出文件已存在")
+	} else if !os.IsNotExist(err) {
+		return BackupReport{}, err
+	}
 
-	sources, warnings, err := collectBackupSources(ctx, cfg, dataDir)
+	databaseSnapshot, cleanupSnapshot, err := createDatabaseSnapshot(ctx, dataDir)
+	if err != nil {
+		return BackupReport{}, err
+	}
+	defer cleanupSnapshot()
+	sources, warnings, err := collectBackupSources(ctx, cfg, dataDir, databaseSnapshot)
 	if err != nil {
 		return BackupReport{}, err
 	}
 	warnings = append(warnings, externalLocalStorageWarnings(ctx, cfg, dataDir)...)
 	manifest := BackupManifest{
 		ApplicationVersion: cfg.Version,
-		DatabaseVersion:    databaseVersionFromFile(filepath.Join(dataDir, "feather.db")),
+		DatabaseVersion:    databaseVersionFromFile(databaseSnapshot),
 		CreatedAt:          nowUTC(),
 		IncludesMasterKey:  false,
 		Files:              make([]BackupFile, 0, len(sources)),
@@ -105,7 +199,28 @@ func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport,
 	}
 	tempName := temp.Name()
 	defer os.Remove(tempName)
-	if err = writeBackupArchive(ctx, temp, sources, manifest); err != nil {
+	archiveOutput := io.Writer(temp)
+	var encryptedWriter io.WriteCloser
+	if options.Passphrase != "" {
+		recipient, recipientErr := age.NewScryptRecipient(options.Passphrase)
+		if recipientErr != nil {
+			_ = temp.Close()
+			return BackupReport{}, recipientErr
+		}
+		encryptedWriter, err = age.Encrypt(temp, recipient)
+		if err != nil {
+			_ = temp.Close()
+			return BackupReport{}, fmt.Errorf("初始化备份加密失败: %w", err)
+		}
+		archiveOutput = encryptedWriter
+	}
+	if err = writeBackupArchive(ctx, archiveOutput, sources, manifest); err == nil && encryptedWriter != nil {
+		err = encryptedWriter.Close()
+	}
+	if err != nil {
+		if encryptedWriter != nil {
+			_ = encryptedWriter.Close()
+		}
 		_ = temp.Close()
 		return BackupReport{}, err
 	}
@@ -120,7 +235,7 @@ func CreateBackup(ctx context.Context, cfg Config, output string) (BackupReport,
 	if err := os.Rename(tempName, output); err != nil {
 		return BackupReport{}, err
 	}
-	return BackupReport{Path: output, Manifest: manifest, Warnings: warnings}, nil
+	return BackupReport{Path: output, Manifest: manifest, Encrypted: options.Passphrase != "", Warnings: warnings}, nil
 }
 
 func externalLocalStorageWarnings(ctx context.Context, cfg Config, dataDir string) []string {
@@ -170,7 +285,7 @@ func externalLocalStorageWarnings(ctx context.Context, cfg Config, dataDir strin
 	return warnings
 }
 
-func collectBackupSources(ctx context.Context, cfg Config, dataDir string) ([]backupSource, []string, error) {
+func collectBackupSources(ctx context.Context, cfg Config, dataDir, databaseSnapshot string) ([]backupSource, []string, error) {
 	var sources []backupSource
 	var warnings []string
 	var total int64
@@ -189,6 +304,9 @@ func collectBackupSources(ctx context.Context, cfg Config, dataDir string) ([]ba
 			return nil
 		}
 		archivePath := filepath.ToSlash(rel)
+		if databaseSnapshot != "" && (archivePath == "feather.db" || archivePath == "feather.db-wal" || archivePath == "feather.db-shm") {
+			return nil
+		}
 		first := strings.SplitN(archivePath, "/", 2)[0]
 		if info.IsDir() && (first == "backups" || first == "tmp") {
 			return filepath.SkipDir
@@ -236,6 +354,16 @@ func collectBackupSources(ctx context.Context, cfg Config, dataDir string) ([]ba
 		sources = append(sources, backupSource{ArchivePath: "master.key", SourcePath: masterPath, Info: info})
 		warnings = append(warnings, "主密钥位于数据目录外，已保存为归档根目录的 master.key")
 	}
+	if databaseSnapshot != "" {
+		info, statErr := os.Stat(databaseSnapshot)
+		if statErr != nil {
+			return nil, nil, fmt.Errorf("数据库快照不可用: %w", statErr)
+		}
+		if err := validateBackupSize(len(sources)+1, info.Size(), total+info.Size()); err != nil {
+			return nil, nil, err
+		}
+		sources = append(sources, backupSource{ArchivePath: "feather.db", SourcePath: databaseSnapshot, Info: info})
+	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].ArchivePath < sources[j].ArchivePath })
 	return sources, warnings, nil
 }
@@ -280,7 +408,7 @@ func hashFile(ctx context.Context, filename string, expected int64) (string, err
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func writeBackupArchive(ctx context.Context, output *os.File, sources []backupSource, manifest BackupManifest) error {
+func writeBackupArchive(ctx context.Context, output io.Writer, sources []backupSource, manifest BackupManifest) error {
 	gzipWriter := gzip.NewWriter(output)
 	tarWriter := tar.NewWriter(gzipWriter)
 	closeWriters := func() error {
@@ -364,9 +492,115 @@ func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, 
 	}
 }
 
+func backupArchiveEncrypted(filename string) (bool, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	header := make([]byte, len("age-encryption.org/v1"))
+	n, err := io.ReadFull(file, header)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return false, err
+	}
+	return string(header[:n]) == "age-encryption.org/v1", nil
+}
+
+func materializeBackupArchive(ctx context.Context, archivePath, passphrase string) (string, bool, func(), error) {
+	encrypted, err := backupArchiveEncrypted(archivePath)
+	if err != nil {
+		return "", false, func() {}, err
+	}
+	if !encrypted {
+		return archivePath, false, func() {}, nil
+	}
+	if passphrase == "" {
+		return "", true, func() {}, errors.New("备份已加密，必须提供备份口令")
+	}
+	identity, err := age.NewScryptIdentity(passphrase)
+	if err != nil {
+		return "", true, func() {}, fmt.Errorf("初始化备份解密失败: %w", err)
+	}
+	input, err := os.Open(archivePath)
+	if err != nil {
+		return "", true, func() {}, err
+	}
+	reader, err := age.Decrypt(input, identity)
+	if err != nil {
+		_ = input.Close()
+		return "", true, func() {}, fmt.Errorf("解密备份失败，口令可能不正确: %w", err)
+	}
+	temp, err := os.CreateTemp("", "feather-decrypted-backup-*.tar.gz")
+	if err != nil {
+		_ = input.Close()
+		return "", true, func() {}, err
+	}
+	tempName := temp.Name()
+	cleanup := func() {
+		_ = input.Close()
+		_ = temp.Close()
+		_ = os.Remove(tempName)
+	}
+	limit := maxBackupTotalSize + maxBackupFileSize + maxManifestSize
+	written, copyErr := copyWithContext(ctx, temp, io.LimitReader(reader, limit+1))
+	if copyErr == nil && written > limit {
+		copyErr = errors.New("解密后的备份超过安全大小限制")
+	}
+	if syncErr := temp.Sync(); copyErr == nil {
+		copyErr = syncErr
+	}
+	if closeErr := temp.Close(); copyErr == nil {
+		copyErr = closeErr
+	}
+	_ = input.Close()
+	if copyErr != nil {
+		cleanup()
+		return "", true, func() {}, copyErr
+	}
+	return tempName, true, func() { _ = os.Remove(tempName) }, nil
+}
+
+func VerifyBackup(ctx context.Context, archivePath, passphrase string) (BackupVerificationReport, error) {
+	if strings.TrimSpace(archivePath) == "" {
+		return BackupVerificationReport{}, errors.New("必须指定备份归档")
+	}
+	absolute, err := filepath.Abs(archivePath)
+	if err != nil {
+		return BackupVerificationReport{}, err
+	}
+	prepared, encrypted, cleanup, err := materializeBackupArchive(ctx, absolute, passphrase)
+	if err != nil {
+		return BackupVerificationReport{}, err
+	}
+	defer cleanup()
+	manifest, err := inspectBackupArchive(ctx, prepared)
+	if err != nil {
+		return BackupVerificationReport{}, err
+	}
+	stage, err := os.MkdirTemp("", "feather-backup-verify-*")
+	if err != nil {
+		return BackupVerificationReport{}, err
+	}
+	defer os.RemoveAll(stage)
+	if err := extractAndVerifyBackup(ctx, prepared, stage, manifest); err != nil {
+		return BackupVerificationReport{}, err
+	}
+	localFiles, err := validateRestoredSnapshot(ctx, stage)
+	if err != nil {
+		return BackupVerificationReport{}, err
+	}
+	return BackupVerificationReport{
+		Path: absolute, Encrypted: encrypted, Manifest: manifest, DatabaseOK: true, LocalFiles: localFiles,
+	}, nil
+}
+
 // RestoreBackup validates all paths, limits, file sizes and digests in a
 // temporary sibling directory before atomically replacing the data directory.
 func RestoreBackup(ctx context.Context, archivePath, dataDir string) (BackupManifest, error) {
+	return RestoreBackupWithOptions(ctx, archivePath, dataDir, BackupOptions{})
+}
+
+func RestoreBackupWithOptions(ctx context.Context, archivePath, dataDir string, options BackupOptions) (BackupManifest, error) {
 	if strings.TrimSpace(archivePath) == "" {
 		return BackupManifest{}, errors.New("必须指定备份归档")
 	}
@@ -378,7 +612,12 @@ func RestoreBackup(ctx context.Context, archivePath, dataDir string) (BackupMani
 	if err != nil {
 		return BackupManifest{}, err
 	}
-	manifest, err := inspectBackupArchive(ctx, archivePath)
+	preparedArchive, _, cleanupArchive, err := materializeBackupArchive(ctx, archivePath, options.Passphrase)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	defer cleanupArchive()
+	manifest, err := inspectBackupArchive(ctx, preparedArchive)
 	if err != nil {
 		return BackupManifest{}, err
 	}
@@ -391,7 +630,10 @@ func RestoreBackup(ctx context.Context, archivePath, dataDir string) (BackupMani
 		return BackupManifest{}, err
 	}
 	defer os.RemoveAll(stage)
-	if err := extractAndVerifyBackup(ctx, archivePath, stage, manifest); err != nil {
+	if err := extractAndVerifyBackup(ctx, preparedArchive, stage, manifest); err != nil {
+		return BackupManifest{}, err
+	}
+	if _, err := validateRestoredSnapshot(ctx, stage); err != nil {
 		return BackupManifest{}, err
 	}
 
@@ -417,6 +659,120 @@ func RestoreBackup(ctx context.Context, archivePath, dataDir string) (BackupMani
 		}
 	}
 	return manifest, nil
+}
+
+func validateRestoredSnapshot(ctx context.Context, stage string) (int, error) {
+	db, err := openReadOnlyDB(filepath.Join(stage, "feather.db"))
+	if err != nil {
+		return 0, fmt.Errorf("恢复后的数据库无法打开: %w", err)
+	}
+	defer db.Close()
+	var quick string
+	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&quick); err != nil || !strings.EqualFold(quick, "ok") {
+		if err == nil {
+			err = errors.New(quick)
+		}
+		return 0, fmt.Errorf("恢复后的数据库完整性检查失败: %w", err)
+	}
+	key, keyErr := backupValidationKey(stage)
+	rows, err := db.QueryContext(ctx, "SELECT id,type,config FROM storages ORDER BY id")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	type localStorageSnapshot struct{ id, root string }
+	storageSnapshots := make([]localStorageSnapshot, 0)
+	for rows.Next() {
+		var storageID, storageType, encrypted string
+		if err := rows.Scan(&storageID, &storageType, &encrypted); err != nil {
+			return 0, err
+		}
+		if keyErr != nil {
+			return 0, fmt.Errorf("备份包含存储配置，但主密钥不可用: %w", keyErr)
+		}
+		config := map[string]any{}
+		if err := decryptJSON(key, encrypted, &config); err != nil {
+			return 0, fmt.Errorf("存储 %s 配置无法使用备份主密钥解密: %w", storageID, err)
+		}
+		if storageType == "local" {
+			root := stringValue(config, "data_dir")
+			if root == "" {
+				root = "images"
+			}
+			storageSnapshots = append(storageSnapshots, localStorageSnapshot{id: storageID, root: root})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	_ = rows.Close()
+	localFiles := 0
+	for _, snapshot := range storageSnapshots {
+		storageID, root := snapshot.id, snapshot.root
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(stage, root)
+		} else if !pathWithin(stage, root) {
+			// External local directories are intentionally not part of the
+			// archive; CreateBackup already reports this limitation.
+			continue
+		}
+		checkRows, queryErr := db.QueryContext(ctx, `SELECT object_key FROM images WHERE storage_id=? UNION ALL SELECT v.object_key FROM image_variants v JOIN images i ON i.id=v.image_id WHERE i.storage_id=?`, storageID, storageID)
+		if queryErr != nil {
+			return localFiles, queryErr
+		}
+		storage := &localStorage{root: root}
+		for checkRows.Next() {
+			var keyName string
+			if err := checkRows.Scan(&keyName); err != nil {
+				_ = checkRows.Close()
+				return localFiles, err
+			}
+			target, err := storage.safe(keyName)
+			if err != nil {
+				_ = checkRows.Close()
+				return localFiles, fmt.Errorf("存储 %s 包含无效对象路径: %w", storageID, err)
+			}
+			info, err := os.Stat(target)
+			if err != nil || !info.Mode().IsRegular() {
+				_ = checkRows.Close()
+				if err == nil {
+					err = errors.New("不是普通文件")
+				}
+				return localFiles, fmt.Errorf("存储 %s 缺少对象 %s: %w", storageID, keyName, err)
+			}
+			localFiles++
+		}
+		if err := checkRows.Err(); err != nil {
+			_ = checkRows.Close()
+			return localFiles, err
+		}
+		_ = checkRows.Close()
+	}
+	return localFiles, nil
+}
+
+func backupValidationKey(stage string) ([]byte, error) {
+	keyPath := filepath.Join(stage, "master.key")
+	data, err := os.ReadFile(keyPath)
+	if err == nil {
+		key, decodeErr := base64.RawURLEncoding.DecodeString(strings.TrimSpace(string(data)))
+		if decodeErr != nil || len(key) != 32 {
+			return nil, errors.New("归档中的 master.key 格式无效")
+		}
+		return key, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("读取归档主密钥失败: %w", err)
+	}
+	encoded := strings.TrimSpace(os.Getenv("FEATHER_MASTER_KEY"))
+	if encoded == "" {
+		return nil, errors.New("归档未包含 master.key，且未提供 FEATHER_MASTER_KEY")
+	}
+	key, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+	if decodeErr != nil || len(key) != 32 {
+		return nil, errors.New("FEATHER_MASTER_KEY 格式无效")
+	}
+	return key, nil
 }
 
 func inspectBackupArchive(ctx context.Context, archivePath string) (BackupManifest, error) {

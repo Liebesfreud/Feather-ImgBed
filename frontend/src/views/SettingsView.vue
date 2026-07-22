@@ -5,7 +5,7 @@ import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger, TabsContent, T
 import { api, deleteJSON, postJSON, putJSON } from '../api'
 import { toast } from '../toast'
 import { useAuthStore } from '../stores/auth'
-import type { ApiToken, Settings, StorageRecord, TokenScope } from '../types'
+import type { Album, ApiToken, Settings, StorageRecord, Tag, TokenScope } from '../types'
 import {
   linkFormatOptions,
   linkSeparatorOptions,
@@ -28,8 +28,10 @@ const loadFailed = ref(false)
 const saving = ref(false)
 const testing = ref('')
 const expanded = ref('')
-const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false, processing: { ...defaultProcessingSettings } })
+const settings = ref<Settings>({ site_name: '轻羽图床', site_url: '', default_storage_id: 'local', max_file_size: 20 << 20, max_batch_count: 10, allowed_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], naming_rule: 'random', allow_duplicates: false, random: { enabled: false, album_id: '', tag_id: '' }, processing: { ...defaultProcessingSettings } })
 const storages = ref<StorageRecord[]>([])
+const albums = ref<Album[]>([])
+const tags = ref<Tag[]>([])
 const tokens = ref<ApiToken[]>([])
 const system = ref({ version: '-', database: '-', enabled_storages: 0 })
 const tokenName = ref('')
@@ -66,6 +68,8 @@ const typeFields: Record<string, { key: string; label: string; secret?: boolean;
 }
 const enabledStorages = computed(() => storages.value.filter((item) => item.enabled))
 const enabledStorageOptions = computed(() => enabledStorages.value.map((item) => ({ label: item.name, value: item.id })))
+const randomAlbumOptions = computed(() => [{ label: '全部相册', value: '' }, ...albums.value.map((item) => ({ label: item.name, value: item.id }))])
+const randomTagOptions = computed(() => [{ label: '全部标签', value: '' }, ...tags.value.map((item) => ({ label: item.name, value: item.id }))])
 const namingRuleOptions = [
   { label: '随机 ID', value: 'random' },
   { label: '日期路径', value: 'date' },
@@ -162,11 +166,13 @@ async function loadSettingsData() {
   loading.value = true
   loadFailed.value = false
   try {
-    const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system')])
-    settings.value = { ...result[0], processing: normalizeProcessingSettings(result[0].processing) }
+    const result = await Promise.all([api<Settings>('/settings'), api<StorageRecord[]>('/storages'), api<ApiToken[]>('/tokens'), api<typeof system.value>('/system'), api<Album[]>('/albums'), api<Tag[]>('/tags')])
+    settings.value = { ...result[0], random: { enabled: Boolean(result[0].random?.enabled), album_id: result[0].random?.album_id || '', tag_id: result[0].random?.tag_id || '' }, processing: normalizeProcessingSettings(result[0].processing) }
     storages.value = result[1]
     tokens.value = result[2]
     system.value = result[3]
+    albums.value = result[4]
+    tags.value = result[5]
     storages.value.forEach((item) => drafts[item.id] = clone(item))
   } catch (error) {
     loadFailed.value = true
@@ -187,6 +193,7 @@ onMounted(() => void loadSettingsData())
         <form class="form-section" @submit.prevent="saveSettings"><h2>站点信息</h2><div class="form-grid"><label>站点名称<input v-model="settings.site_name" maxlength="100"></label><label>站点访问地址<input v-model="settings.site_url" type="url" placeholder="https://img.example.com"></label><label>默认存储<UiSelect v-model="settings.default_storage_id" :options="enabledStorageOptions" aria-label="默认存储" /></label></div></form>
         <section class="form-section"><h2>上传规则</h2><div class="form-grid"><label>单文件上限（MB）<input :value="settings.max_file_size / 1024 / 1024" type="number" min="1" max="1024" @input="settings.max_file_size = Number(($event.target as HTMLInputElement).value) * 1024 * 1024"></label><label>单批文件数量<input v-model.number="settings.max_batch_count" type="number" min="1" max="100"></label><label>图片命名规则<UiSelect v-model="settings.naming_rule" :options="namingRuleOptions" aria-label="图片命名规则" /></label></div><div class="checkbox-row"><span>允许格式</span><label v-for="item in allowedFormats" :key="item.value"><UiCheckbox :model-value="settings.allowed_types.includes(item.value)" :aria-label="item.label" @update:model-value="toggleAllowedType(item.value, $event)" />{{ item.label }}</label></div><label class="switch-row"><span><strong>允许重复文件</strong></span><UiSwitch v-model="settings.allow_duplicates" aria-label="允许重复文件" /></label></section>
         <section class="form-section processing-settings"><h2>图片处理</h2><label class="switch-row"><span><strong>清理 EXIF 与定位元数据</strong></span><UiSwitch v-model="settings.processing.strip_metadata" aria-label="清理图片元数据" /></label><label class="switch-row"><span><strong>生成 WebP 版本</strong></span><UiSwitch v-model="settings.processing.generate_webp" aria-label="生成 WebP 版本" /></label><div class="form-grid processing-fields"><label>WebP 质量<input v-model.number="settings.processing.webp_quality" type="number" min="1" max="100" :disabled="!settings.processing.generate_webp"></label></div><label class="switch-row"><span><strong>生成水印版本</strong></span><UiSwitch v-model="settings.processing.watermark_enabled" aria-label="生成水印版本" /></label><div class="form-grid processing-fields"><label>水印文字<input v-model.trim="settings.processing.watermark_text" maxlength="200" :disabled="!settings.processing.watermark_enabled" placeholder="例如 Feather ImgBed"></label><label>水印位置<UiSelect v-model="settings.processing.watermark_position" :options="watermarkPositionOptions" aria-label="水印位置" /></label></div></section>
+        <section class="form-section"><h2>随机图隐私</h2><label class="switch-row"><span><strong>启用公开随机图 API</strong><small>关闭时 /api/v1/random 返回 404，避免私人图片意外公开。</small></span><UiSwitch v-model="settings.random.enabled" aria-label="启用公开随机图 API" /></label><div class="form-grid"><label>限定相册<UiSelect v-model="settings.random.album_id" :options="randomAlbumOptions" aria-label="随机图限定相册" /></label><label>限定标签<UiSelect v-model="settings.random.tag_id" :options="randomTagOptions" aria-label="随机图限定标签" /></label></div><p class="section-note">同时选择相册和标签时，只有同时满足两个条件的图片会进入随机池。</p></section>
         <section class="form-section"><h2>复制偏好</h2><div class="form-grid"><label>默认链接格式<UiSelect v-model="copyFormat" :options="linkFormatOptions" aria-label="默认链接格式" /></label><label>批量链接分隔方式<UiSelect v-model="copySeparator" :options="linkSeparatorOptions" aria-label="批量链接分隔方式" /></label></div><label class="switch-row"><span><strong>上传完成后自动复制</strong></span><UiSwitch v-model="autoCopy" aria-label="上传完成后自动复制" /></label></section>
       </TabsContent>
 

@@ -74,7 +74,14 @@ export interface Settings {
   allowed_types: string[]
   naming_rule: 'random' | 'date' | 'original'
   allow_duplicates: boolean
+  random: RandomSettings
   processing: ProcessingSettings
+}
+
+export interface RandomSettings {
+  enabled: boolean
+  album_id: string
+  tag_id: string
 }
 
 export interface UploadStatistics {

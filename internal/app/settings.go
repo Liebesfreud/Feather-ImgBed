@@ -76,6 +76,9 @@ func validateSettings(settings Settings) string {
 	if settings.NamingRule != "random" && settings.NamingRule != "date" && settings.NamingRule != "original" {
 		return "图片命名规则必须是 random、date 或 original"
 	}
+	if len(settings.Random.AlbumID) > 100 || len(settings.Random.TagID) > 100 {
+		return "随机图范围配置无效"
+	}
 	if settings.Processing.WebPQuality < 1 || settings.Processing.WebPQuality > 100 {
 		return "WebP 质量必须在 1 到 100 之间"
 	}
@@ -100,6 +103,8 @@ func (a *App) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	settings.SiteName = strings.TrimSpace(settings.SiteName)
 	settings.SiteURL = strings.TrimRight(strings.TrimSpace(settings.SiteURL), "/")
+	settings.Random.AlbumID = strings.TrimSpace(settings.Random.AlbumID)
+	settings.Random.TagID = strings.TrimSpace(settings.Random.TagID)
 	settings.Processing.WatermarkText = strings.TrimSpace(settings.Processing.WatermarkText)
 	if message := validateSettings(settings); message != "" {
 		writeError(w, r, 400, "INVALID_SETTINGS", message)
@@ -109,6 +114,20 @@ func (a *App) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := a.db.QueryRowContext(r.Context(), "SELECT enabled FROM storages WHERE id=?", settings.DefaultStorageID).Scan(&enabled); err != nil || enabled == 0 {
 		writeError(w, r, 400, "INVALID_DEFAULT_STORAGE", "默认存储不存在或未启用")
 		return
+	}
+	if settings.Random.AlbumID != "" {
+		var exists int
+		if err := a.db.QueryRowContext(r.Context(), "SELECT 1 FROM albums WHERE id=?", settings.Random.AlbumID).Scan(&exists); err != nil {
+			writeError(w, r, 400, "INVALID_RANDOM_ALBUM", "随机图指定的相册不存在")
+			return
+		}
+	}
+	if settings.Random.TagID != "" {
+		var exists int
+		if err := a.db.QueryRowContext(r.Context(), "SELECT 1 FROM tags WHERE id=?", settings.Random.TagID).Scan(&exists); err != nil {
+			writeError(w, r, 400, "INVALID_RANDOM_TAG", "随机图指定的标签不存在")
+			return
+		}
 	}
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {

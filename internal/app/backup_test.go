@@ -14,14 +14,19 @@ import (
 )
 
 func TestCreateAndRestoreBackup(t *testing.T) {
+	t.Setenv("FEATHER_MASTER_KEY", "")
 	source := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(source, "images", "nested"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "feather.db"), []byte("database"), 0600); err != nil {
+	db, err := openDB(filepath.Join(source, "feather.db"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "master.key"), []byte("key"), 0600); err != nil {
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadMasterKey(filepath.Join(source, "master.key")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(source, "images", "nested", "photo.png"), []byte("image"), 0600); err != nil {
@@ -145,6 +150,7 @@ func TestRestoreRejectsSymlinkEntry(t *testing.T) {
 }
 
 func TestCreateBackupWarnsAboutExternalLocalStorage(t *testing.T) {
+	t.Setenv("FEATHER_MASTER_KEY", "")
 	a := newTestApp(t)
 	external := filepath.Join(t.TempDir(), "external-images")
 	if err := os.MkdirAll(external, 0700); err != nil {
@@ -179,6 +185,9 @@ func TestCreateBackupWarnsAboutExternalLocalStorage(t *testing.T) {
 	if !found {
 		t.Fatalf("未警告外部本地存储: %+v", report.Warnings)
 	}
+	if _, err := VerifyBackup(context.Background(), report.Path, ""); err != nil {
+		t.Fatalf("包含有效主密钥和存储配置的备份未通过校验: %v", err)
+	}
 }
 
 func TestBackupArchiveRechecksDigestWhileWriting(t *testing.T) {
@@ -211,7 +220,15 @@ func TestBackupArchiveRechecksDigestWhileWriting(t *testing.T) {
 }
 
 func TestCreateBackupWarnsWhenMasterKeyIsMissing(t *testing.T) {
+	t.Setenv("FEATHER_MASTER_KEY", "")
 	dataDir := t.TempDir()
+	db, err := openDB(filepath.Join(dataDir, "feather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dataDir, "note.txt"), []byte("data"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -230,6 +247,68 @@ func TestCreateBackupWarnsWhenMasterKeyIsMissing(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("主密钥缺失时未输出警告: %+v", report.Warnings)
+	}
+}
+
+func TestEncryptedBackupCanVerifyAndRestore(t *testing.T) {
+	t.Setenv("FEATHER_MASTER_KEY", "")
+	source := t.TempDir()
+	db, err := openDB(filepath.Join(source, "feather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadMasterKey(filepath.Join(source, "master.key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(source, "images"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "images", "one.png"), []byte("image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "encrypted.tar.gz.age")
+	passphrase := "correct horse battery staple"
+	report, err := CreateBackupWithOptions(context.Background(), Config{DataDir: source, Version: "test"}, archive, BackupOptions{Passphrase: passphrase})
+	if err != nil || !report.Encrypted {
+		t.Fatalf("创建加密备份失败: %+v %v", report, err)
+	}
+	if _, err := VerifyBackup(context.Background(), archive, "wrong passphrase"); err == nil {
+		t.Fatal("错误口令不应通过备份校验")
+	}
+	verified, err := VerifyBackup(context.Background(), archive, passphrase)
+	if err != nil || !verified.DatabaseOK || !verified.Encrypted {
+		t.Fatalf("加密备份校验失败: %+v %v", verified, err)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err := RestoreBackupWithOptions(context.Background(), archive, target, BackupOptions{Passphrase: passphrase}); err != nil {
+		t.Fatalf("恢复加密备份失败: %v", err)
+	}
+	if content, err := os.ReadFile(filepath.Join(target, "images", "one.png")); err != nil || string(content) != "image" {
+		t.Fatalf("加密备份图片恢复错误: %q %v", content, err)
+	}
+}
+
+func TestCreateBackupDoesNotOverwriteExistingFile(t *testing.T) {
+	dataDir := t.TempDir()
+	db, err := openDB(filepath.Join(dataDir, "feather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "existing.tar.gz")
+	if err := os.WriteFile(output, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateBackup(context.Background(), Config{DataDir: dataDir}, output); err == nil {
+		t.Fatal("已有备份文件不应被覆盖")
+	}
+	if content, err := os.ReadFile(output); err != nil || string(content) != "keep" {
+		t.Fatalf("已有文件被修改: %q %v", content, err)
 	}
 }
 

@@ -82,6 +82,26 @@ func initializeTestApp(t *testing.T, handler http.Handler) (*http.Cookie, string
 	return cookies[0], data.CSRFToken
 }
 
+func updateTestSettings(t *testing.T, a *App, update func(*Settings)) {
+	t.Helper()
+	settings, err := loadSettings(context.Background(), a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update(&settings)
+	tx, err := a.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := saveSettingsTx(context.Background(), tx, settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func pngBytes(t *testing.T) []byte {
 	t.Helper()
 	var buffer bytes.Buffer
@@ -325,6 +345,7 @@ func TestLargeLibrarySearchAndRandomImage(t *testing.T) {
 	a := newTestApp(t)
 	handler := a.Handler()
 	cookie, _ := initializeTestApp(t, handler)
+	updateTestSettings(t, a, func(settings *Settings) { settings.Random.Enabled = true })
 	tx, err := a.db.Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -405,11 +426,12 @@ func TestRandomImageAPI(t *testing.T) {
 	handler := a.Handler()
 
 	recorder, response := request(t, handler, http.MethodGet, "/api/v1/random", nil, nil, "", "", "")
-	if recorder.Code != http.StatusNotFound || response.Error == nil || response.Error.Code != "RANDOM_IMAGE_NOT_FOUND" {
+	if recorder.Code != http.StatusNotFound || response.Error == nil || response.Error.Code != "RANDOM_IMAGE_DISABLED" {
 		t.Fatalf("空图库随机图响应错误: %d %s", recorder.Code, recorder.Body.String())
 	}
 
 	cookie, csrf := initializeTestApp(t, handler)
+	updateTestSettings(t, a, func(settings *Settings) { settings.Random.Enabled = true })
 	body, contentType := uploadBody(t, pngBytes(t))
 	recorder, response = request(t, handler, http.MethodPost, "/api/v1/images", body, cookie, csrf, "", contentType)
 	if recorder.Code != http.StatusCreated {
@@ -441,6 +463,32 @@ func TestRandomImageAPI(t *testing.T) {
 	_ = json.Unmarshal(response.Data, &result)
 	if result.ID != uploaded.ID || result.URL != uploaded.PublicURL || result.MIMEType != "image/png" || result.Width != 2 || result.Height != 3 {
 		t.Fatalf("随机图 JSON 数据错误: %+v", result)
+	}
+
+	now := nowUTC()
+	if _, err := a.db.Exec(`INSERT INTO tags(id,name,color,created_at,updated_at) VALUES('random-tag','随机图','#22c55e',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO albums(id,name,description,cover_image_id,created_at,updated_at) VALUES('random-album','随机图','',NULL,?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	updateTestSettings(t, a, func(settings *Settings) {
+		settings.Random.AlbumID = "random-album"
+		settings.Random.TagID = "random-tag"
+	})
+	recorder, response = request(t, handler, http.MethodGet, "/api/v1/random?format=json", nil, nil, "", "", "")
+	if recorder.Code != http.StatusNotFound || response.Error == nil || response.Error.Code != "RANDOM_IMAGE_NOT_FOUND" {
+		t.Fatalf("随机图隐私范围未排除无关联图片: %d %s", recorder.Code, recorder.Body.String())
+	}
+	if _, err := a.db.Exec(`INSERT INTO image_tags(image_id,tag_id) VALUES(?, 'random-tag')`, uploaded.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO album_images(album_id,image_id,position,added_at) VALUES('random-album',?,0,?)`, uploaded.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	recorder, response = request(t, handler, http.MethodGet, "/api/v1/random?format=json", nil, nil, "", "", "")
+	if recorder.Code != http.StatusOK || !response.Success {
+		t.Fatalf("随机图相册与标签范围未命中关联图片: %d %s", recorder.Code, recorder.Body.String())
 	}
 
 	recorder, response = request(t, handler, http.MethodGet, "/api/v1/random?storage_id=missing", nil, nil, "", "", "")

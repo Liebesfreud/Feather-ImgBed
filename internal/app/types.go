@@ -55,7 +55,14 @@ type Settings struct {
 	AllowedTypes     []string           `json:"allowed_types"`
 	NamingRule       string             `json:"naming_rule"`
 	AllowDuplicates  bool               `json:"allow_duplicates"`
+	Random           RandomSettings     `json:"random"`
 	Processing       ProcessingSettings `json:"processing"`
+}
+
+type RandomSettings struct {
+	Enabled bool   `json:"enabled"`
+	AlbumID string `json:"album_id"`
+	TagID   string `json:"tag_id"`
 }
 
 type ProcessingSettings struct {
