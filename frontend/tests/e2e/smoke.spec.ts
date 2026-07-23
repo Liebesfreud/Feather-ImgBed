@@ -41,6 +41,42 @@ test('认证检查期间不初始化 WebGL 背景', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '开始使用轻羽' })).toBeVisible()
 })
 
+test.describe('WebGL 点阵背景', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } })
+
+  test('低分辨率渲染仍覆盖整个视口', async ({ page }) => {
+    await page.route('**/api/v1/auth/status', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { initialized: false, authenticated: false },
+          request_id: 'e2e',
+        },
+      })
+    })
+
+    await page.goto('/')
+
+    const background = page.locator('.global-dither')
+    const canvas = background.locator('canvas')
+    await expect(canvas).toBeVisible({ timeout: 5_000 })
+    const sizes = await background.evaluate((element) => {
+      const backgroundRect = element.getBoundingClientRect()
+      const canvasElement = element.querySelector('canvas')!
+      const canvasRect = canvasElement.getBoundingClientRect()
+      return {
+        background: { width: backgroundRect.width, height: backgroundRect.height },
+        canvas: { width: canvasRect.width, height: canvasRect.height },
+        buffer: { width: canvasElement.width, height: canvasElement.height },
+      }
+    })
+
+    expect(sizes.canvas).toEqual(sizes.background)
+    expect(sizes.buffer.width).toBeLessThan(sizes.canvas.width)
+    expect(sizes.buffer.height).toBeLessThan(sizes.canvas.height)
+  })
+})
+
 test('认证状态携带启动数据时不再重复请求上传配置', async ({ page }) => {
   const requested: string[] = []
   await page.route('**/api/v1/**', async (route) => {

@@ -250,8 +250,13 @@ const resize = () => {
   const width = Math.max(1, Math.round(clientWidth * scale));
   const height = Math.max(1, Math.round(clientHeight * scale));
   renderer.setSize(width, height);
-  program.uniforms.resolution.value[0] = gl?.canvas.width || width;
-  program.uniforms.resolution.value[1] = gl?.canvas.height || height;
+  const canvas = gl?.canvas as HTMLCanvasElement | undefined;
+  if (canvas) {
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+  }
+  program.uniforms.resolution.value[0] = canvas?.width || width;
+  program.uniforms.resolution.value[1] = canvas?.height || height;
 };
 
 const handleMouseMove = (e: MouseEvent) => {
