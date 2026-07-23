@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/feather-imgbed-cover.svg" alt="Feather ImgBed 项目封面" width="100%">
+</p>
+
 # 轻羽图床 Feather-ImgBed
 
 [![Release](https://img.shields.io/github/v/release/Liebesfreud/Feather-ImgBed?display_name=tag&sort=semver)](https://github.com/Liebesfreud/Feather-ImgBed/releases)

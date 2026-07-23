@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720" role="img" aria-labelledby="title desc">
+  <title id="title">Feather ImgBed 项目封面</title>
+  <desc id="desc">深色绿色风格的轻羽图床封面，展示羽毛、上传轨迹、图片卡片和多存储节点。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0d0c"/>
+      <stop offset="0.5" stop-color="#121512"/>
+      <stop offset="1" stop-color="#0c110e"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#202520"/>
+      <stop offset="1" stop-color="#141814"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2bd968"/>
+      <stop offset="1" stop-color="#169c46"/>
+    </linearGradient>
+    <linearGradient id="photoA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8be7ad"/>
+      <stop offset="0.55" stop-color="#21864a"/>
+      <stop offset="1" stop-color="#16301e"/>
+    </linearGradient>
+    <linearGradient id="photoB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9f8e4"/>
+      <stop offset="0.45" stop-color="#74c891"/>
+      <stop offset="1" stop-color="#1a4228"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#1db954" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#1db954" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="12" height="12" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.1" fill="#55da80" fill-opacity="0.15"/>
+    </pattern>
+    <pattern id="microDots" width="7" height="7" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.7" fill="#a7efbf" fill-opacity="0.16"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000" flood-opacity="0.52"/>
+    </filter>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.38"/>
+    </filter>
+    <filter id="greenShadow" x="-80%" y="-80%" width="260%" height="260%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#1db954" flood-opacity="0.24"/>
+    </filter>
+    <clipPath id="appClip">
+      <rect x="842" y="91" width="652" height="548" rx="28"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="720" fill="url(#background)"/>
+  <rect width="1600" height="720" fill="url(#dots)"/>
+  <ellipse cx="1240" cy="345" rx="530" ry="490" fill="url(#glow)"/>
+  <ellipse cx="1540" cy="80" rx="360" ry="300" fill="url(#glow)" opacity="0.45"/>
+
+  <g fill="none" stroke="#295b39" stroke-opacity="0.28">
+    <circle cx="1510" cy="104" r="160"/>
+    <circle cx="1510" cy="104" r="220"/>
+    <circle cx="1510" cy="104" r="280"/>
+    <path d="M-40 625C250 545 455 545 746 642"/>
+    <path d="M-80 662C250 566 502 579 786 684"/>
+  </g>
+
+  <g font-family="'DM Sans','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif">
+    <g transform="translate(104 84)">
+      <rect width="314" height="44" rx="22" fill="#18221b" stroke="#2f5339"/>
+      <g transform="translate(15 10) scale(1.02)" fill="none" stroke="#2bd968" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
+        <path d="M16 8 2 22M17.5 15H9"/>
+      </g>
+      <text x="51" y="28" fill="#b9c6bc" font-size="14" font-weight="700" letter-spacing="2.4">SELF-HOSTED IMAGE PLATFORM</text>
+    </g>
+
+    <text x="102" y="246" fill="#f7faf8" font-size="86" font-weight="760" letter-spacing="-4.2">Feather</text>
+    <text x="102" y="331" fill="#25cc60" font-size="86" font-weight="760" letter-spacing="-4.2">ImgBed</text>
+    <text x="108" y="382" fill="#a5b0a7" font-size="23" font-weight="600" letter-spacing="2.6">轻量 · 自托管 · 多存储</text>
+    <text x="108" y="429" fill="#768078" font-size="18">上传、整理、分享，让每一张图片都由你掌控。</text>
+
+    <g transform="translate(104 477)" font-size="12" font-weight="750" letter-spacing="1.35">
+      <g>
+        <rect width="142" height="38" rx="10" fill="#171c18" stroke="#303831"/>
+        <circle cx="19" cy="19" r="5" fill="#1db954"/>
+        <text x="34" y="24" fill="#bbc4bd">LOCAL-FIRST</text>
+      </g>
+      <g transform="translate(154)">
+        <rect width="166" height="38" rx="10" fill="#171c18" stroke="#303831"/>
+        <circle cx="19" cy="19" r="5" fill="#1db954"/>
+        <text x="34" y="24" fill="#bbc4bd">MULTI-STORAGE</text>
+      </g>
+      <g transform="translate(332)">
+        <rect width="182" height="38" rx="10" fill="#171c18" stroke="#303831"/>
+        <circle cx="19" cy="19" r="5" fill="#1db954"/>
+        <text x="34" y="24" fill="#bbc4bd">PRIVATE BY DESIGN</text>
+      </g>
+    </g>
+
+    <g transform="translate(108 607)" fill="#667069" font-size="14" font-weight="600" letter-spacing="1.3">
+      <text>GO</text><circle cx="37" cy="-5" r="2" fill="#3d4840"/>
+      <text x="53">VUE</text><circle cx="93" cy="-5" r="2" fill="#3d4840"/>
+      <text x="109">SQLITE</text><circle cx="170" cy="-5" r="2" fill="#3d4840"/>
+      <text x="186">SINGLE BINARY</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="842" y="91" width="652" height="548" rx="28" fill="url(#panel)" stroke="#344038" stroke-width="1.2"/>
+  </g>
+  <g clip-path="url(#appClip)">
+    <rect x="842" y="91" width="652" height="548" fill="url(#microDots)" opacity="0.5"/>
+    <rect x="842" y="91" width="652" height="72" fill="#171b18"/>
+    <line x1="842" y1="163" x2="1494" y2="163" stroke="#303830"/>
+
+    <g transform="translate(870 111)">
+      <rect width="34" height="34" rx="9" fill="url(#green)" filter="url(#greenShadow)"/>
+      <g transform="translate(5 5)" fill="none" stroke="#061108" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
+        <path d="M16 8 2 22M17.5 15H9"/>
+      </g>
+      <text x="46" y="23" fill="#eef5f0" font-family="'DM Sans',system-ui,sans-serif" font-size="17" font-weight="700">轻羽图床</text>
+    </g>
+    <g transform="translate(1161 108)">
+      <rect width="80" height="40" rx="10" fill="#272d28"/>
+      <circle cx="20" cy="20" r="5" fill="#25cc60"/>
+      <rect x="32" y="16" width="29" height="8" rx="4" fill="#758078"/>
+      <rect x="92" width="40" height="40" rx="10" fill="#252a26" stroke="#363d37"/>
+      <path d="M109 13v14M102 20h14" stroke="#aab4ac" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="156" cy="20" r="20" fill="#232824" stroke="#363d37"/>
+      <circle cx="156" cy="17" r="5" fill="none" stroke="#aab4ac" stroke-width="1.8"/>
+      <path d="M147 29c2-5 16-5 18 0" fill="none" stroke="#aab4ac" stroke-width="1.8" stroke-linecap="round"/>
+    </g>
+
+    <g transform="translate(878 194)">
+      <text x="0" y="0" fill="#f2f6f3" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="27" font-weight="700">上传图片</text>
+      <text x="0" y="27" fill="#77817a" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="13">快速、安全地保存你的每一刻</text>
+    </g>
+
+    <g transform="translate(878 244)">
+      <rect width="274" height="254" rx="18" fill="#1a1f1b" stroke="#465349" stroke-dasharray="7 7"/>
+      <circle cx="137" cy="92" r="42" fill="#183d24"/>
+      <g transform="translate(116 70) scale(1.75)" fill="none" stroke="#25cc60" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
+        <path d="M16 8 2 22M17.5 15H9"/>
+      </g>
+      <text x="137" y="163" text-anchor="middle" fill="#edf4ef" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="16" font-weight="700">拖放图片到这里</text>
+      <text x="137" y="188" text-anchor="middle" fill="#748078" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="12">单图、批量或 URL 导入</text>
+      <rect x="80" y="211" width="114" height="30" rx="8" fill="url(#green)"/>
+      <text x="137" y="231" text-anchor="middle" fill="#071109" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="11" font-weight="800">选择图片</text>
+    </g>
+
+    <g transform="translate(1172 244)" filter="url(#softShadow)">
+      <g>
+        <rect width="134" height="118" rx="15" fill="#202621" stroke="#384139"/>
+        <rect x="9" y="9" width="116" height="74" rx="10" fill="url(#photoA)"/>
+        <circle cx="101" cy="29" r="11" fill="#c7f8d8" fill-opacity="0.8"/>
+        <path d="M12 78 48 44l25 22 17-14 32 29" fill="#13341e" fill-opacity="0.78"/>
+        <rect x="11" y="94" width="52" height="7" rx="3.5" fill="#7f8a82"/>
+        <circle cx="115" cy="98" r="5" fill="#1db954"/>
+      </g>
+      <g transform="translate(148)">
+        <rect width="134" height="118" rx="15" fill="#202621" stroke="#384139"/>
+        <rect x="9" y="9" width="116" height="74" rx="10" fill="url(#photoB)"/>
+        <circle cx="38" cy="35" r="15" fill="#f4fff8" fill-opacity="0.72"/>
+        <path d="M11 79c30-38 49-30 64-6 12-20 30-25 48 6" fill="#235334" fill-opacity="0.82"/>
+        <rect x="11" y="94" width="64" height="7" rx="3.5" fill="#7f8a82"/>
+        <path d="m109 93 3.5 7 7.5 1-5.5 5.2 1.4 7.4-6.9-3.7-6.8 3.7 1.3-7.4-5.4-5.2 7.5-1z" fill="#1db954" transform="scale(.58) translate(79 70)"/>
+      </g>
+      <g transform="translate(0 134)">
+        <rect width="134" height="118" rx="15" fill="#202621" stroke="#384139"/>
+        <rect x="9" y="9" width="116" height="74" rx="10" fill="#202f27"/>
+        <circle cx="52" cy="46" r="26" fill="#2b8e4b"/>
+        <circle cx="80" cy="49" r="22" fill="#77d798" fill-opacity="0.8"/>
+        <rect x="11" y="94" width="45" height="7" rx="3.5" fill="#7f8a82"/>
+        <rect x="92" y="93" width="31" height="10" rx="5" fill="#173b22"/>
+      </g>
+      <g transform="translate(148 134)">
+        <rect width="134" height="118" rx="15" fill="#202621" stroke="#384139"/>
+        <rect x="9" y="9" width="116" height="74" rx="10" fill="#15211a"/>
+        <path d="M20 70 49 27l22 31 15-18 29 30" fill="none" stroke="#3ed876" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="11" y="94" width="57" height="7" rx="3.5" fill="#7f8a82"/>
+        <circle cx="115" cy="98" r="5" fill="#1db954"/>
+      </g>
+    </g>
+
+    <g transform="translate(878 522)">
+      <rect width="576" height="81" rx="16" fill="#171c18" stroke="#303830"/>
+      <g transform="translate(20 18)">
+        <rect width="44" height="44" rx="12" fill="#213126"/>
+        <path d="M13 26h18M16 19h12M18 12h8" stroke="#25cc60" stroke-width="2" stroke-linecap="round"/>
+        <text x="58" y="18" fill="#e9f0eb" font-family="'DM Sans','Noto Sans SC',system-ui,sans-serif" font-size="13" font-weight="700">多存储已连接</text>
+        <text x="58" y="38" fill="#707a72" font-family="'DM Sans',system-ui,sans-serif" font-size="11">Local · S3 · WebDAV · Telegram</text>
+      </g>
+      <g transform="translate(396 22)">
+        <circle cx="16" cy="18" r="16" fill="#233529" stroke="#34513c"/>
+        <circle cx="54" cy="18" r="16" fill="#233529" stroke="#34513c"/>
+        <circle cx="92" cy="18" r="16" fill="#233529" stroke="#34513c"/>
+        <circle cx="130" cy="18" r="16" fill="#1db954"/>
+        <path d="M9 18h14M47 18h14M85 18h14M123 18h14" stroke="#bdeacb" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </g>
+  </g>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M812 218C757 201 739 169 758 131" stroke="#1db954" stroke-opacity="0.42" stroke-width="2" stroke-dasharray="5 9"/>
+    <circle cx="758" cy="129" r="7" fill="#1db954" stroke="none"/>
+    <path d="M1518 512c44 4 70-11 82-44" stroke="#1db954" stroke-opacity="0.38" stroke-width="2" stroke-dasharray="5 9"/>
+    <circle cx="1518" cy="512" r="7" fill="#1db954" stroke="none"/>
+  </g>
+</svg>
