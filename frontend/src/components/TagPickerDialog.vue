@@ -24,7 +24,8 @@ const actionOptions = [{ label: '添加所选标签', value: 'add' }, { label: '
 
 function toggle(id: string) {
   const next = new Set(selected.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
   selected.value = next
 }
 

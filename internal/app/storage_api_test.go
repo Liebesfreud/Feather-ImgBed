@@ -45,6 +45,27 @@ func TestCloudflareR2UsesImageBedProxy(t *testing.T) {
 	}
 }
 
+func TestPutStorageRejectsInvalidEndpointBeforeSaving(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+	record := s3StorageRecord("https://img.example.com")
+	record.ID = "broken"
+	record.Config["endpoint"] = "://invalid"
+	payload, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder, response := request(t, handler, http.MethodPut, "/api/v1/storages/broken", strings.NewReader(string(payload)), cookie, csrf, "", "application/json")
+	if recorder.Code != http.StatusBadRequest || response.Error == nil || response.Error.Code != "INVALID_STORAGE" {
+		t.Fatalf("非法存储地址未被拒绝: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM storages WHERE id='broken'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("非法存储配置被写入数据库: count=%d err=%v", count, err)
+	}
+}
+
 func TestUpdatingStorageRewritesExistingObjectURLs(t *testing.T) {
 	a := newTestApp(t)
 	handler := a.Handler()

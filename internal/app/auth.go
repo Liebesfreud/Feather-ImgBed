@@ -73,8 +73,16 @@ func (a *App) initialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Username = strings.TrimSpace(input.Username)
-	if len(input.Username) < 3 || len(input.Username) > 64 || len(input.Password) < 10 || len(input.Password) > bcryptMaxPasswordBytes {
+	usernameLength := len([]rune(input.Username))
+	if usernameLength < 3 || usernameLength > 64 || len(input.Password) < 10 || len(input.Password) > bcryptMaxPasswordBytes {
 		writeError(w, r, http.StatusBadRequest, "INVALID_CREDENTIALS", "用户名为 3 到 64 个字符，密码为 10 到 72 字节")
+		return
+	}
+	settings := defaultSettings()
+	settings.SiteURL = strings.TrimRight(strings.TrimSpace(input.SiteURL), "/")
+	settings.DefaultStorageID = "local"
+	if message := validateSettings(settings); message != "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_SETTINGS", message)
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), 12)
@@ -99,15 +107,12 @@ func (a *App) initialize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusConflict, "INITIALIZATION_CONFLICT", "初始化已由另一请求完成")
 		return
 	}
-	settings := defaultSettings()
-	settings.SiteURL = strings.TrimRight(input.SiteURL, "/")
-	storageID := "local"
-	settings.DefaultStorageID = storageID
+	storageID := settings.DefaultStorageID
 	if err := saveSettingsTx(r.Context(), tx, settings); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "保存初始设置失败")
 		return
 	}
-	localConfig, err := encryptJSON(a.masterKey, map[string]any{"data_dir": "images", "public_url": strings.TrimRight(input.SiteURL, "/") + "/files"})
+	localConfig, err := encryptJSON(a.masterKey, map[string]any{"data_dir": "images", "public_url": settings.SiteURL + "/files"})
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "ENCRYPTION_ERROR", "初始化存储失败")
 		return
@@ -150,7 +155,11 @@ func (a *App) createSession(w http.ResponseWriter, r *http.Request, userID int64
 		writeError(w, r, http.StatusInternalServerError, "SESSION_ERROR", "无法创建登录会话")
 		return
 	}
-	csrf, _ := randomToken(24)
+	csrf, err := randomToken(24)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "SESSION_ERROR", "无法创建登录会话")
+		return
+	}
 	expires := time.Now().UTC().Add(sessionLifetime)
 	expiresAt := formatTime(expires)
 	_, err = a.db.ExecContext(r.Context(), "INSERT INTO sessions(id_hash,user_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,?)", hashToken(raw), userID, csrf, expiresAt, nowUTC())
@@ -272,13 +281,25 @@ func (a *App) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, 500, "HASH_ERROR", "修改密码失败")
 		return
 	}
-	_, err = a.db.ExecContext(r.Context(), "UPDATE users SET password_hash=?,updated_at=? WHERE id=?", string(hash), nowUTC(), p.UserID)
+	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, r, 500, "DATABASE_ERROR", "修改密码失败")
 		return
 	}
-	_, _ = a.db.ExecContext(r.Context(), "DELETE FROM sessions WHERE user_id=?", p.UserID)
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(r.Context(), "UPDATE users SET password_hash=?,updated_at=? WHERE id=?", string(hash), nowUTC(), p.UserID); err != nil {
+		writeError(w, r, 500, "DATABASE_ERROR", "修改密码失败")
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), "DELETE FROM sessions WHERE user_id=?", p.UserID); err != nil {
+		writeError(w, r, 500, "DATABASE_ERROR", "修改密码失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, r, 500, "DATABASE_ERROR", "修改密码失败")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.cfg.SecureCookie || r.TLS != nil, SameSite: http.SameSiteStrictMode})
 	writeData(w, r, http.StatusOK, map[string]bool{"password_changed": true})
 }
 
@@ -328,7 +349,7 @@ func (a *App) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" || len(input.Name) > 100 {
+	if input.Name == "" || len([]rune(input.Name)) > 100 {
 		writeError(w, r, 400, "INVALID_NAME", "Token 名称不能为空且最多 100 个字符")
 		return
 	}

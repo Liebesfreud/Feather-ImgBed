@@ -214,3 +214,31 @@ func TestOrganizationBatchValidationIsAtomic(t *testing.T) {
 		t.Fatalf("超量相册批次未被拒绝: %d %s", recorderHTTP.Code, recorderHTTP.Body.String())
 	}
 }
+
+func TestRandomScopePreventsReferencedTagAndAlbumDeletion(t *testing.T) {
+	test := newOrganizationTestContext(t)
+	now := nowUTC()
+	if _, err := test.app.db.Exec(`INSERT INTO tags(id,name,color,created_at,updated_at) VALUES('public-tag','公开','#22c55e',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := test.app.db.Exec(`INSERT INTO albums(id,name,description,created_at,updated_at) VALUES('public-album','公开','',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	updateTestSettings(t, test.app, func(settings *Settings) {
+		settings.Random.Enabled = true
+		settings.Random.TagID = "public-tag"
+		settings.Random.AlbumID = "public-album"
+	})
+	for _, target := range []string{"/api/v1/tags/public-tag", "/api/v1/albums/public-album"} {
+		recorder, response := request(t, test.handler, http.MethodDelete, target, nil, test.cookie, test.csrf, "", "")
+		if recorder.Code != http.StatusConflict || response.Error == nil || response.Error.Code != "RANDOM_SCOPE_IN_USE" {
+			t.Fatalf("正在使用的随机图范围可被删除: target=%s status=%d body=%s", target, recorder.Code, recorder.Body.String())
+		}
+	}
+	for table, id := range map[string]string{"tags": "public-tag", "albums": "public-album"} {
+		var count int
+		if err := test.app.db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE id=?`, id).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("冲突删除修改了 %s: count=%d err=%v", table, count, err)
+		}
+	}
+}

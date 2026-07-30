@@ -124,6 +124,33 @@ func TestTelegramStorageKeepsLegacyDeleteButRejectsLegacyOpen(t *testing.T) {
 	}
 }
 
+func TestTelegramDeleteTreatsMissingMessageAsSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": false, "description": "Bad Request: message to delete not found",
+		})
+	}))
+	defer server.Close()
+	storage, err := newTelegramStorage(map[string]any{
+		"bot_token": "token", "chat_id": "chat", "proxy_url": server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Delete(t.Context(), "v2/42/ZmlsZS1pZA/test.png"); err != nil {
+		t.Fatalf("重复删除已不存在的 Telegram 消息应成功: %v", err)
+	}
+}
+
+func TestTelegramRejectsInvalidProxyURL(t *testing.T) {
+	if _, err := newTelegramStorage(map[string]any{
+		"bot_token": "token", "chat_id": "chat", "proxy_url": "://invalid",
+	}); err == nil {
+		t.Fatal("非法 Telegram 代理地址未被拒绝")
+	}
+}
+
 func TestTelegramPublicFileRoute(t *testing.T) {
 	a := newTestApp(t)
 	initializeTestApp(t, a.Handler())

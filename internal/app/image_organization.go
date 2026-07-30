@@ -132,8 +132,12 @@ func (a *App) createTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := nowUTC()
-	id := newUUIDv7()
-	_, err := a.db.ExecContext(r.Context(), `INSERT INTO tags(id,name,color,created_at,updated_at) VALUES(?,?,?,?,?)`, id, input.Name, input.Color, now, now)
+	id, err := newUUIDv7()
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "ID_GENERATION_FAILED", "创建标签失败")
+		return
+	}
+	_, err = a.db.ExecContext(r.Context(), `INSERT INTO tags(id,name,color,created_at,updated_at) VALUES(?,?,?,?,?)`, id, input.Name, input.Color, now, now)
 	if isUniqueConstraint(err) {
 		writeError(w, r, http.StatusConflict, "TAG_NAME_EXISTS", "标签名称已存在")
 		return
@@ -183,7 +187,22 @@ func (a *App) updateTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) deleteTag(w http.ResponseWriter, r *http.Request) {
-	result, err := a.db.ExecContext(r.Context(), `DELETE FROM tags WHERE id=?`, r.PathValue("id"))
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除标签失败")
+		return
+	}
+	defer tx.Rollback()
+	settings, err := loadSettings(r.Context(), tx)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除标签失败")
+		return
+	}
+	if settings.Random.TagID == r.PathValue("id") {
+		writeError(w, r, http.StatusConflict, "RANDOM_SCOPE_IN_USE", "该标签正在作为随机图公开范围，请先修改随机图设置")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `DELETE FROM tags WHERE id=?`, r.PathValue("id"))
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除标签失败")
 		return
@@ -191,6 +210,10 @@ func (a *App) deleteTag(w http.ResponseWriter, r *http.Request) {
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		writeError(w, r, http.StatusNotFound, "TAG_NOT_FOUND", "标签不存在")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除标签失败")
 		return
 	}
 	writeData(w, r, http.StatusOK, map[string]bool{"deleted": true})
@@ -345,12 +368,17 @@ func (a *App) createAlbum(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "COVER_IMAGE_NOT_FOUND", "封面图片不存在")
 		return
 	}
-	id, now := newUUIDv7(), nowUTC()
+	id, err := newUUIDv7()
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "ID_GENERATION_FAILED", "创建相册失败")
+		return
+	}
+	now := nowUTC()
 	var cover any
 	if input.CoverImageID != "" {
 		cover = input.CoverImageID
 	}
-	_, err := a.db.ExecContext(r.Context(), `INSERT INTO albums(id,name,description,cover_image_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
+	_, err = a.db.ExecContext(r.Context(), `INSERT INTO albums(id,name,description,cover_image_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
 		id, input.Name, input.Description, cover, now, now)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "创建相册失败")
@@ -449,7 +477,22 @@ func (a *App) updateAlbum(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) deleteAlbum(w http.ResponseWriter, r *http.Request) {
-	result, err := a.db.ExecContext(r.Context(), `DELETE FROM albums WHERE id=?`, r.PathValue("id"))
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除相册失败")
+		return
+	}
+	defer tx.Rollback()
+	settings, err := loadSettings(r.Context(), tx)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除相册失败")
+		return
+	}
+	if settings.Random.AlbumID == r.PathValue("id") {
+		writeError(w, r, http.StatusConflict, "RANDOM_SCOPE_IN_USE", "该相册正在作为随机图公开范围，请先修改随机图设置")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `DELETE FROM albums WHERE id=?`, r.PathValue("id"))
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除相册失败")
 		return
@@ -457,6 +500,10 @@ func (a *App) deleteAlbum(w http.ResponseWriter, r *http.Request) {
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		writeError(w, r, http.StatusNotFound, "ALBUM_NOT_FOUND", "相册不存在")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "删除相册失败")
 		return
 	}
 	writeData(w, r, http.StatusOK, map[string]bool{"deleted": true})

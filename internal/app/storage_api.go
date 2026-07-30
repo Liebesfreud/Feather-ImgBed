@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -46,11 +47,14 @@ func validateStorage(record StorageRecord) string {
 	if !storageIDPattern.MatchString(record.ID) {
 		return "存储 ID 只能包含字母、数字、下划线和短横线，最多 64 个字符"
 	}
-	if strings.TrimSpace(record.Name) == "" {
-		return "存储名称不能为空"
+	if strings.TrimSpace(record.Name) == "" || len([]rune(strings.TrimSpace(record.Name))) > 100 {
+		return "存储名称不能为空且最多 100 个字符"
 	}
 	switch record.Type {
 	case "local":
+		if publicAddress := stringValue(record.Config, "public_url"); publicAddress != "" && !validHTTPAddress(publicAddress) {
+			return "本地存储访问地址必须是有效的 HTTP 或 HTTPS 地址"
+		}
 	case "s3":
 		if stringValue(record.Config, "endpoint") == "" || stringValue(record.Config, "bucket") == "" || stringValue(record.Config, "access_key") == "" || stringValue(record.Config, "secret_key") == "" {
 			return "S3 Endpoint、Bucket、Access Key 和 Secret Key 不能为空"
@@ -58,9 +62,15 @@ func validateStorage(record StorageRecord) string {
 		if !isCloudflareR2Endpoint(record.Config) && stringValue(record.Config, "public_url") == "" {
 			return "非 Cloudflare R2 的 S3 存储必须填写访问域名"
 		}
+		if publicAddress := stringValue(record.Config, "public_url"); publicAddress != "" && !validHTTPAddress(publicAddress) {
+			return "S3 访问域名必须是有效的 HTTP 或 HTTPS 地址"
+		}
 	case "webdav":
 		if stringValue(record.Config, "url") == "" || stringValue(record.Config, "username") == "" || stringValue(record.Config, "password") == "" || stringValue(record.Config, "public_url") == "" {
 			return "WebDAV 地址、用户名、密码和访问域名不能为空"
+		}
+		if !validHTTPAddress(stringValue(record.Config, "public_url")) {
+			return "WebDAV 访问域名必须是有效的 HTTP 或 HTTPS 地址"
 		}
 	case "telegram":
 		if stringValue(record.Config, "bot_token") == "" || stringValue(record.Config, "chat_id") == "" {
@@ -70,6 +80,12 @@ func validateStorage(record StorageRecord) string {
 		return "存储类型必须是 local、s3、webdav 或 telegram"
 	}
 	return ""
+}
+
+func validHTTPAddress(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") &&
+		parsed.Hostname() != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func (a *App) listStorages(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +189,10 @@ func (a *App) putStorage(w http.ResponseWriter, r *http.Request) {
 	}
 	if message := validateStorage(input); message != "" {
 		writeError(w, r, 400, "INVALID_STORAGE", message)
+		return
+	}
+	if _, err := a.defaultBackend(input); err != nil {
+		writeError(w, r, 400, "INVALID_STORAGE", err.Error())
 		return
 	}
 	settings, err := loadSettings(r.Context(), a.db)

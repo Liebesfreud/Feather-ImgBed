@@ -71,7 +71,7 @@ onMounted(() => void load())
     <div v-else-if="!albums.length" class="gallery-state empty-state"><div class="empty-art"><FolderHeart :size="44"/></div><h2>还没有相册</h2><button class="primary-button" @click="openForm()"><Plus :size="17"/>创建第一个相册</button></div>
     <div v-else class="album-grid">
       <article v-for="album in albums" :key="album.id" class="album-card" @click="router.push(`/albums/${album.id}`)">
-        <div class="album-cover"><img v-if="album.cover_url" :src="album.cover_url" :alt="`${album.name}封面`"><FolderHeart v-else :size="42"/></div>
+        <div class="album-cover"><img v-if="album.cover_url" :src="album.cover_url" :alt="`${album.name}封面`" loading="lazy" decoding="async"><FolderHeart v-else :size="42"/></div>
         <div class="album-card-copy"><div><strong>{{ album.name }}</strong><span>{{ album.image_count }} 张图片</span></div><p v-if="album.description">{{ album.description }}</p></div>
         <div class="album-card-actions"><button :aria-label="`编辑${album.name}`" @click.stop="openForm(album)"><Pencil :size="16"/></button><button class="danger" :aria-label="`删除${album.name}`" @click.stop="requestDelete(album)"><Trash2 :size="16"/></button></div>
       </article>

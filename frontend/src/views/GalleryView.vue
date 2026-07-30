@@ -166,7 +166,12 @@ function clearAdvancedFilters() {
   tagFilter.value = ''
   order.value = 'desc'
 }
-function toggleSelected(id: string) { const next = new Set(selected.value); next.has(id) ? next.delete(id) : next.add(id); selected.value = next }
+function toggleSelected(id: string) {
+  const next = new Set(selected.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selected.value = next
+}
 function selectLoaded() { selected.value = new Set(images.value.map((item) => item.id)) }
 function clearSelection() { selected.value = new Set() }
 function openPreview(index: number) { if (selectMode.value) { toggleSelected(images.value[index].id); return }; previewIndex.value = index; zoom.value = 1; void loadPreviewData() }

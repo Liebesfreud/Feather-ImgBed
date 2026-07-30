@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,43 +84,30 @@ func (a *App) randomImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	storageID := strings.TrimSpace(r.URL.Query().Get("storage_id"))
-	maxQuery := "SELECT COALESCE(MAX(i.rowid),0) FROM images i WHERE i.deleted_at IS NULL"
-	maxArgs := []any{}
+	filterQuery := " FROM images i WHERE i.deleted_at IS NULL"
+	filterArgs := []any{}
 	if storageID != "" {
-		maxQuery += " AND i.storage_id=?"
-		maxArgs = append(maxArgs, storageID)
+		filterQuery += " AND i.storage_id=?"
+		filterArgs = append(filterArgs, storageID)
 	}
-	maxQuery, maxArgs = applyRandomScope(maxQuery, maxArgs, settings.Random)
-	var maxRowID int64
-	if err := a.db.QueryRowContext(r.Context(), maxQuery, maxArgs...).Scan(&maxRowID); err != nil {
+	filterQuery, filterArgs = applyRandomScope(filterQuery, filterArgs, settings.Random)
+	var count int64
+	if err := a.db.QueryRowContext(r.Context(), "SELECT COUNT(*)"+filterQuery, filterArgs...).Scan(&count); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "DATABASE_ERROR", "读取随机图片失败")
 		return
 	}
-	query := "SELECT " + imageColumns + " FROM images i WHERE i.deleted_at IS NULL"
-	args := []any{}
-	if storageID != "" {
-		query += " AND i.storage_id=?"
-		args = append(args, storageID)
+	if count == 0 {
+		writeError(w, r, http.StatusNotFound, "RANDOM_IMAGE_NOT_FOUND", "没有符合条件的图片")
+		return
 	}
-	query, args = applyRandomScope(query, args, settings.Random)
-	if maxRowID > 0 {
-		query += " AND i.rowid>=((random() & 9223372036854775807) % ?) ORDER BY i.rowid LIMIT 1"
-		args = append(args, maxRowID+1)
-	} else {
-		query += " LIMIT 1"
+	offset, err := rand.Int(rand.Reader, big.NewInt(count))
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "RANDOM_GENERATION_FAILED", "生成随机图片索引失败")
+		return
 	}
+	query := "SELECT " + imageColumns + filterQuery + " ORDER BY i.rowid LIMIT 1 OFFSET ?"
+	args := append(append([]any{}, filterArgs...), offset.Int64())
 	img, err := scanImage(a.db.QueryRowContext(r.Context(), query, args...))
-	if isNotFound(err) && maxRowID > 0 {
-		fallback := "SELECT " + imageColumns + " FROM images i WHERE i.deleted_at IS NULL"
-		fallbackArgs := []any{}
-		if storageID != "" {
-			fallback += " AND i.storage_id=?"
-			fallbackArgs = append(fallbackArgs, storageID)
-		}
-		fallback, fallbackArgs = applyRandomScope(fallback, fallbackArgs, settings.Random)
-		fallback += " ORDER BY i.rowid LIMIT 1"
-		img, err = scanImage(a.db.QueryRowContext(r.Context(), fallback, fallbackArgs...))
-	}
 	if isNotFound(err) {
 		writeError(w, r, http.StatusNotFound, "RANDOM_IMAGE_NOT_FOUND", "没有符合条件的图片")
 		return

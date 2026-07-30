@@ -89,7 +89,7 @@ func TestBulkTrashAndFavorite(t *testing.T) {
 
 	tooMany := make([]string, 101)
 	for i := range tooMany {
-		tooMany[i] = newUUIDv7()
+		tooMany[i], _ = newUUIDv7()
 	}
 	body, _ := json.Marshal(map[string]any{"action": "trash", "ids": tooMany})
 	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/images/bulk",

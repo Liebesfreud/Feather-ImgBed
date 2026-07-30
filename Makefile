@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help frontend dev build run test vet test-frontend check clean
+.PHONY: help frontend dev build run test vet lint test-frontend check clean
 
 BINARY := feather-imgbed
 GO_BUILD_FLAGS := -trimpath
@@ -47,7 +47,11 @@ vet: frontend ## 构建前端并运行 go vet
 test-frontend: ## 仅运行前端单元测试
 	cd frontend && npm test
 
+lint: ## 检查前端代码规范
+	cd frontend && npm run lint
+
 check: frontend ## 提交前综合检查（前端构建 + Go 测试 + vet）
+	cd frontend && npm run lint
 	go test -race -count=1 ./...
 	go vet ./...
 

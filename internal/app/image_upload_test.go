@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 type recordingUploadStorage struct {
@@ -172,6 +173,20 @@ func TestIngestRejectsImageOverPixelLimitBeforeStorageWrite(t *testing.T) {
 	}
 	if storage.putCount != 0 {
 		t.Fatalf("超大图片不应写入存储，实际写入 %d 次", storage.putCount)
+	}
+}
+
+func TestSafeOriginalNameKeepsValidUTF8WithinByteLimit(t *testing.T) {
+	name := strings.Repeat("照片", 80) + ".png"
+	got := safeOriginalName(name)
+	if !utf8.ValidString(got) {
+		t.Fatalf("截断后的文件名不是有效 UTF-8: %q", got)
+	}
+	if len(got) > 255 {
+		t.Fatalf("截断后的文件名仍超过 255 字节: %d", len(got))
+	}
+	if !strings.HasSuffix(got, ".png") {
+		t.Fatalf("截断文件名未保留后缀: %q", got)
 	}
 }
 

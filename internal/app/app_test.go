@@ -501,6 +501,81 @@ func TestRandomImageAPI(t *testing.T) {
 	}
 }
 
+func TestRandomImageIsUniformAcrossSparseRowIDs(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	initializeTestApp(t, handler)
+	updateTestSettings(t, a, func(settings *Settings) { settings.Random.Enabled = true })
+	now := nowUTC()
+	for _, item := range []struct {
+		rowID int
+		id    string
+	}{{rowID: 1, id: "first"}, {rowID: 100, id: "last"}} {
+		if _, err := a.db.Exec(`INSERT INTO images(
+			rowid,id,hash,original_name,object_key,storage_type,storage_id,mime_type,size,width,height,public_url,created_at
+		) VALUES(?,?,?,?,?,'local','local','image/png',10,1,1,?,?)`,
+			item.rowID, item.id, item.id, item.id+".png", item.id+".png", "/files/"+item.id+".png", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counts := map[string]int{}
+	for range 200 {
+		recorder, response := request(t, handler, http.MethodGet, "/api/v1/random?format=json", nil, nil, "", "", "")
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("随机图请求失败: %d %s", recorder.Code, recorder.Body.String())
+		}
+		var result struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(response.Data, &result); err != nil {
+			t.Fatal(err)
+		}
+		counts[result.ID]++
+	}
+	if counts["first"] < 50 || counts["last"] < 50 {
+		t.Fatalf("稀疏 rowid 的随机分布明显偏斜: %+v", counts)
+	}
+}
+
+func TestInitializeRejectsInvalidSiteURL(t *testing.T) {
+	a := newTestApp(t)
+	recorder, response := request(t, a.Handler(), http.MethodPost, "/api/v1/auth/initialize",
+		strings.NewReader(`{"username":"admin","password":"very-secure-password","site_url":"javascript:alert(1)"}`),
+		nil, "", "", "application/json")
+	if recorder.Code != http.StatusBadRequest || response.Error == nil || response.Error.Code != "INVALID_SETTINGS" {
+		t.Fatalf("非法初始化站点地址未被拒绝: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("非法初始化请求写入了管理员: count=%d err=%v", count, err)
+	}
+}
+
+func TestChangePasswordRevokesAllSessions(t *testing.T) {
+	a := newTestApp(t)
+	handler := a.Handler()
+	cookie, csrf := initializeTestApp(t, handler)
+	recorder, _ := request(t, handler, http.MethodPost, "/api/v1/auth/login",
+		strings.NewReader(`{"username":"admin","password":"very-secure-password"}`), nil, "", "", "application/json")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("创建第二个登录会话失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	payload := strings.NewReader(`{"current_password":"very-secure-password","new_password":"new-secure-password"}`)
+	recorder, _ = request(t, handler, http.MethodPut, "/api/v1/auth/password", payload, cookie, csrf, "", "application/json")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("修改密码失败: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var sessions int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatalf("修改密码后仍存在有效会话: count=%d err=%v", sessions, err)
+	}
+	recorder, _ = request(t, handler, http.MethodPost, "/api/v1/auth/login",
+		strings.NewReader(`{"username":"admin","password":"new-secure-password"}`), nil, "", "", "application/json")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("新密码无法登录: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestChangePasswordRejectsInvalidAndOversizedInput(t *testing.T) {
 	a := newTestApp(t)
 	handler := a.Handler()

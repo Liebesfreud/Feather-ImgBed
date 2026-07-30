@@ -211,7 +211,8 @@ type s3Storage struct {
 func newS3Storage(config map[string]any) (*s3Storage, error) {
 	raw := stringValue(config, "endpoint")
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, errors.New("S3 Endpoint 必须是有效的 HTTP 或 HTTPS 地址")
 	}
 	client, err := minio.New(parsed.Host+parsed.Path, &minio.Options{Creds: credentials.NewStaticV4(stringValue(config, "access_key"), stringValue(config, "secret_key"), ""), Secure: parsed.Scheme == "https", Region: stringValue(config, "region"), BucketLookup: func() minio.BucketLookupType {
@@ -263,7 +264,8 @@ type webDAVStorage struct {
 func newWebDAVStorage(c map[string]any) (*webDAVStorage, error) {
 	base := strings.TrimRight(stringValue(c, "url"), "/")
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Scheme != "http" && u.Scheme != "https") {
 		return nil, errors.New("WebDAV 地址必须是有效的 HTTP 或 HTTPS 地址")
 	}
 	return &webDAVStorage{base: base, user: stringValue(c, "username"), password: stringValue(c, "password"), dir: strings.Trim(stringValue(c, "target_dir"), "/"), client: &http.Client{Timeout: 30 * time.Second}}, nil
@@ -356,6 +358,11 @@ func newTelegramStorage(c map[string]any) (*telegramStorage, error) {
 	} else if !strings.HasPrefix(apiDomain, "http://") && !strings.HasPrefix(apiDomain, "https://") {
 		apiDomain = "https://" + apiDomain
 	}
+	parsed, err := url.Parse(apiDomain)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, errors.New("Telegram API 代理地址必须是有效的 HTTP 或 HTTPS 地址")
+	}
 	s := &telegramStorage{token: stringValue(c, "bot_token"), chatID: stringValue(c, "chat_id"), apiDomain: apiDomain, client: &http.Client{Timeout: 60 * time.Second}}
 	if s.token == "" || s.chatID == "" {
 		return nil, errors.New("Telegram Bot Token 和 Chat ID 不能为空")
@@ -428,17 +435,35 @@ func (s *telegramStorage) Delete(ctx context.Context, key string) error {
 		messageID = parts[1]
 	}
 	form := url.Values{"chat_id": {s.chatID}, "message_id": {messageID}}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.api("deleteMessage"), strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.api("deleteMessage"), strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Telegram 删除失败: HTTP %d", resp.StatusCode)
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
 	}
-	return nil
+	decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result)
+	messageMissing := strings.Contains(strings.ToLower(result.Description), "message to delete not found")
+	if messageMissing && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusNotFound) {
+		return nil
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if decodeErr != nil {
+			return fmt.Errorf("解析 Telegram 删除响应失败: %w", decodeErr)
+		}
+		if !result.OK {
+			return fmt.Errorf("Telegram 删除失败: %s", result.Description)
+		}
+		return nil
+	}
+	return fmt.Errorf("Telegram 删除失败: HTTP %d: %s", resp.StatusCode, result.Description)
 }
 func (s *telegramStorage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 	parts := strings.SplitN(key, "/", 4)
@@ -488,14 +513,27 @@ func (s *telegramStorage) Open(ctx context.Context, key string) (io.ReadCloser, 
 	return fileResp.Body, nil
 }
 func (s *telegramStorage) Test(ctx context.Context) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.api("getMe"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.api("getMe"), nil)
+	if err != nil {
+		return err
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Telegram 连接失败: HTTP %d", resp.StatusCode)
+	}
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+		return fmt.Errorf("解析 Telegram 连接响应失败: %w", err)
+	}
+	if !result.OK {
+		return fmt.Errorf("Telegram 连接失败: %s", result.Description)
 	}
 	return nil
 }

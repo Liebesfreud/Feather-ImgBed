@@ -3,9 +3,9 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref }
 import { useRoute, useRouter } from 'vue-router'
 import { CloudUpload, Images, Settings, LogOut, Feather, UserRound, Moon, Sun, Braces } from '@lucide/vue'
 import { useAuthStore } from './stores/auth'
-import AuthScreen from './components/AuthScreen.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
 
+const AuthScreen = defineAsyncComponent(() => import('./components/AuthScreen.vue'))
 const Dither = defineAsyncComponent(() => import('./components/backgrounds/Dither.vue'))
 const ToastHost = defineAsyncComponent(() => import('./components/ToastHost.vue'))
 
@@ -41,8 +41,9 @@ const nav = [
 const managementPaths = ['/gallery', '/albums', '/trash']
 const showApp = computed(() => !auth.checking && auth.initialized && auth.authenticated)
 const isDark = computed(() => theme.value === 'dark')
-const ditherColor: [number, number, number] = [0.11, 0.68, 0.3]
-
+const ditherColor = computed<[number, number, number]>(() => isDark.value
+  ? [0.616, 0.710, 0.608]
+  : [0.435, 0.561, 0.447])
 function isNavActive(path: string) {
   if (path === '/gallery') {
     return managementPaths.some(item => route.path === item || route.path.startsWith(`${item}/`))

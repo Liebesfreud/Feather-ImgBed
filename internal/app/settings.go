@@ -46,7 +46,7 @@ func (a *App) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateSettings(settings Settings) string {
-	if settings.SiteName == "" || len(settings.SiteName) > 100 {
+	if settings.SiteName == "" || len([]rune(settings.SiteName)) > 100 {
 		return "站点名称不能为空且最多 100 个字符"
 	}
 	if settings.SiteURL != "" {

@@ -27,6 +27,7 @@ async function fulfill(route: Route, data: unknown, status = 200) {
 async function mockManagementAPI(page: Page) {
   let galleryItems = [image]
   let trashItems = [{ ...image, deleted_at: '2026-07-17T09:00:00Z' }]
+  let purgeResult = { succeeded: 1, failed: 0, remaining: 0 }
   const calls: { path: string; body?: unknown; query?: URLSearchParams }[] = []
 
   await page.route('**/api/v1/**', async (route) => {
@@ -52,8 +53,8 @@ async function mockManagementAPI(page: Page) {
       return fulfill(route, { restored: true })
     }
     if (path === '/trash/purge') {
-      trashItems = []
-      return fulfill(route, { requested: 1, deleted: 1, failed: 0, results: [] })
+      if (!purgeResult.failed) trashItems = []
+      return fulfill(route, purgeResult, purgeResult.failed ? 207 : 200)
     }
     return fulfill(route, {})
   })
@@ -61,6 +62,7 @@ async function mockManagementAPI(page: Page) {
   return {
     calls,
     resetTrash: () => { trashItems = [{ ...image, deleted_at: '2026-07-17T09:00:00Z' }] },
+    setPurgeResult: (result: typeof purgeResult) => { purgeResult = result },
   }
 }
 
@@ -116,6 +118,18 @@ test('回收站支持批量恢复和清空确认', async ({ page }) => {
   await page.getByRole('alertdialog').getByRole('button', { name: '永久删除' }).click()
   await expect(page.getByText('回收站是空的')).toBeVisible()
   expect(api.calls.find((call) => call.path === '/trash/purge')?.body).toEqual({ all: true })
+})
+
+test('回收站批量永久删除会显示部分失败数量', async ({ page }) => {
+  const api = await mockManagementAPI(page)
+  api.setPurgeResult({ succeeded: 0, failed: 1, remaining: 1 })
+  await page.goto('/trash')
+  await page.getByRole('button', { name: '批量管理' }).click()
+  await page.getByRole('checkbox', { name: '选择 cat.jpg' }).click()
+  await page.locator('.batch-bar').getByRole('button', { name: '永久删除' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '永久删除' }).click()
+  await expect(page.getByText('已清理 0 张，1 张失败并已保留供重试')).toBeVisible()
+  await expect(page.getByText('cat.jpg', { exact: true })).toBeVisible()
 })
 
 test('图片管理统一收纳图库、相册与回收站', async ({ page }) => {

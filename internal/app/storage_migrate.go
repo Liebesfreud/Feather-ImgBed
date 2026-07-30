@@ -236,7 +236,11 @@ func migrationObjectKey(imageID, kind, oldKey string) (string, error) {
 	if len(extension) > 10 || strings.ContainsAny(extension, `/\\`) {
 		extension = ".bin"
 	}
-	return path.Join("migrated", imageID, kind+"-"+newUUIDv7()+extension), nil
+	id, err := newUUIDv7()
+	if err != nil {
+		return "", fmt.Errorf("生成迁移对象标识失败: %w", err)
+	}
+	return path.Join("migrated", imageID, kind+"-"+id+extension), nil
 }
 
 type migrationByteCounter struct{ total int64 }

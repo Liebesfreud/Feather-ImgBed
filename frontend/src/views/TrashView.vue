@@ -47,7 +47,8 @@ async function load(reset = false) {
 }
 function toggleSelected(id: string) {
   const next = new Set(selected.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
   selected.value = next
 }
 function clearSelection() { selected.value = new Set() }
@@ -83,8 +84,11 @@ async function confirmDanger() {
       toast('图片已永久删除')
     } else {
       if (action.kind === 'selected') {
-        await postJSON('/trash/purge', { ids: [...selected.value] })
-        toast('批量清理已完成')
+        const result = await postJSON<{ succeeded: number; failed: number }>('/trash/purge', { ids: [...selected.value] })
+        toast(
+          result.failed ? `已清理 ${result.succeeded} 张，${result.failed} 张失败并已保留供重试` : `已清理 ${result.succeeded} 张图片`,
+          result.failed ? 'error' : 'success',
+        )
       } else {
         let removed = 0
         for (;;) {

@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "golang.org/x/image/webp"
 )
@@ -190,7 +191,10 @@ func (a *App) ingestImageWithBackend(ctx context.Context, source io.Reader, file
 			return existing, nil
 		}
 	}
-	id := newUUIDv7()
+	id, err := newUUIDv7()
+	if err != nil {
+		return Image{}, &apiError{Code: "ID_GENERATION_FAILED", Message: "无法生成图片标识，请稍后重试"}
+	}
 	key := objectKey(settings.NamingRule, id, filename, mime)
 	if _, err = temp.Seek(0, io.SeekStart); err != nil {
 		return Image{}, &apiError{Code: "FILE_READ_ERROR", Message: "读取上传文件失败"}
@@ -310,6 +314,10 @@ func (a *App) storeGeneratedVariant(
 	siteURL, imageID, kind, createdAt string,
 	generated generatedImage,
 ) (*ImageVariant, error) {
+	variantID, err := newUUIDv7()
+	if err != nil {
+		return nil, fmt.Errorf("生成派生版本标识失败: %w", err)
+	}
 	putCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	storedKey, err := backend.Put(putCtx, generated.ObjectKey, generated.Reader, generated.Size, generated.MIMEType)
@@ -317,7 +325,7 @@ func (a *App) storeGeneratedVariant(
 		return nil, err
 	}
 	return &ImageVariant{
-		ID: newUUIDv7(), ImageID: imageID, Kind: kind, ObjectKey: storedKey,
+		ID: variantID, ImageID: imageID, Kind: kind, ObjectKey: storedKey,
 		PublicURL: publicURL(record, storedKey, siteURL), MIMEType: generated.MIMEType,
 		Size: generated.Size, Width: generated.Width, Height: generated.Height, CreatedAt: createdAt,
 	}, nil
@@ -381,12 +389,17 @@ var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func safeOriginalName(name string) string {
 	name = path.Base(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.ToValidUTF8(name, "")
 	name = strings.TrimSpace(name)
 	if name == "" || name == "." {
 		return "image"
 	}
 	if len(name) > 255 {
-		name = name[len(name)-255:]
+		start := len(name) - 255
+		for start < len(name) && !utf8.RuneStart(name[start]) {
+			start++
+		}
+		name = name[start:]
 	}
 	return name
 }
@@ -408,15 +421,17 @@ func objectKey(rule, id, original, mime string) string {
 	}
 }
 
-func newUUIDv7() string {
+func newUUIDv7() (string, error) {
 	var value [16]byte
-	_, _ = rand.Read(value[:])
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
 	ms := uint64(time.Now().UnixMilli())
 	value[0], value[1], value[2] = byte(ms>>40), byte(ms>>32), byte(ms>>24)
 	value[3], value[4], value[5] = byte(ms>>16), byte(ms>>8), byte(ms)
 	value[6] = (value[6] & 0x0f) | 0x70
 	value[8] = (value[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16])
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
 }
 
 func osCreateTemp(dataDir string) (*os.File, error) {

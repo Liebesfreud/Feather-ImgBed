@@ -133,6 +133,10 @@ func (a *App) rebuildOneThumbnail(
 	if err != nil {
 		return fmt.Errorf("生成缩略图失败: %w", err)
 	}
+	variantID, err := newUUIDv7()
+	if err != nil {
+		return fmt.Errorf("生成缩略图标识失败: %w", err)
+	}
 	putCtx, putCancel := context.WithTimeout(ctx, 45*time.Second)
 	storedKey, err := backend.Put(putCtx, generated.ObjectKey, generated.Reader, generated.Size, generated.MIMEType)
 	putCancel()
@@ -140,7 +144,7 @@ func (a *App) rebuildOneThumbnail(
 		return fmt.Errorf("写入缩略图失败: %w", err)
 	}
 	variant := ImageVariant{
-		ID: newUUIDv7(), ImageID: imageID, Kind: "thumbnail", ObjectKey: storedKey,
+		ID: variantID, ImageID: imageID, Kind: "thumbnail", ObjectKey: storedKey,
 		PublicURL: publicURL(record, storedKey, settings.SiteURL), MIMEType: generated.MIMEType, Size: generated.Size,
 		Width: generated.Width, Height: generated.Height, CreatedAt: nowUTC(),
 	}
